@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  formatCliHelp,
+  parseCliOptions,
   createLinovelHeaders,
   downloadBook,
   downloadChapter,
@@ -23,6 +25,41 @@ test("createLinovelHeaders sends the reading-state cookie needed for full HTML",
   assert.deepEqual(createLinovelHeaders({ cookie: "night=1" }), {
     cookie: "night=1",
   });
+});
+
+test("parseCliOptions accepts book and chapter download options", () => {
+  assert.deepEqual(
+    parseCliOptions([
+      "--book-id",
+      "2013",
+      "--chapter-id",
+      "72034",
+      "--max-pages",
+      "2",
+      "--pretty",
+    ]),
+    {
+      command: "download",
+      bookId: "2013",
+      chapterId: "72034",
+      maxPages: 2,
+      pretty: true,
+    },
+  );
+
+  assert.deepEqual(parseCliOptions(["-b", "2013", "-m", "1"]), {
+    command: "download",
+    bookId: "2013",
+    maxPages: 1,
+    pretty: false,
+  });
+});
+
+test("parseCliOptions handles help and validates required book id", () => {
+  assert.deepEqual(parseCliOptions(["--help"]), { command: "help" });
+  assert.match(formatCliHelp(), /--book-id/);
+  assert.throws(() => parseCliOptions([]), /Missing required option: --book-id/);
+  assert.throws(() => parseCliOptions(["--book-id", "2013", "--max-pages", "0"]), /positive integer/);
 });
 
 test("extractCatalogChapters reads chapter links in catalog order", async () => {

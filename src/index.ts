@@ -9,6 +9,7 @@ import {
 } from "./types.js";
 
 export { buildCatalogUrl, buildChapterUrl, extractCatalogChapters } from "./catalog.js";
+export { formatCliHelp, parseCliOptions } from "./cli-options.js";
 export { createLinovelHeaders, fetchLinovelHtml } from "./http.js";
 export { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 export { parseChapterPage } from "./page.js";

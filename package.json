@@ -3,12 +3,16 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "linovel-dl": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tsconfig.json && node --test"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "typescript": "^5.8.3"
   },
   "dependencies": {
