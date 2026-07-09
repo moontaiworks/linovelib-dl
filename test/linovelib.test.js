@@ -758,6 +758,31 @@ test("createVolumeEpubFiles embeds downloaded illustration assets", async () => 
   );
 });
 
+test("createVolumeEpubFiles preserves intended blank lines in chapter output", async () => {
+  const page = parseChapterPage(
+    await readFixture("72035.html"),
+    "https://tw.linovelib.com/novel/2013/72035.html",
+  );
+
+  const files = createVolumeEpubFiles({
+    bookId: "2013",
+    title: "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+    identifier: "linovelib-2013-72033",
+    chapters: [
+      {
+        title: "第一話「難道是：異世界」",
+        pages: [page],
+      },
+    ],
+  });
+
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  assert.match(
+    byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
+    /<p>「啊──嗚啊──」<\/p>\s*<br \/>\s*<p>腦袋裡雖然這樣想，然而口中卻發出分不清是呻吟還是喘氣的聲音。<\/p>/,
+  );
+});
+
 test("createVolumeEpubFiles leaves a placeholder and source link for missing images", async () => {
   const page = parseChapterPage(
     await readFixture("122012.html"),

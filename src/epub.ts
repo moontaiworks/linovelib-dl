@@ -269,6 +269,9 @@ function renderChapterXhtml(
 <html xmlns="http://www.w3.org/1999/xhtml" lang="zh-TW">
   <head>
     <title>${xmlText(chapterTitle)}</title>
+    <style>
+      br { display: block; margin: 1em 0; content: ""; }
+    </style>
   </head>
   <body>
     <section>
@@ -286,7 +289,7 @@ function renderContentNode(
   imageBySourceUrl: Map<string, EpubImageEntry>,
 ): string {
   if (node.type === "br") {
-    return "";
+    return "      <br />";
   }
 
   if (node.type === "img" && node.src) {
