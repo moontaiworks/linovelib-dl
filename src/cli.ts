@@ -50,7 +50,11 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
         chapters,
         imageAssets,
       });
-      const fileName = `${safeFileName(result.volume.title)}.epub`;
+      const fileName = formatEpubFileName(
+        options.bookId,
+        result.volume.volumeId,
+        result.volume.title,
+      );
       const outputPath = join(output, fileName);
 
       await writeEpubFile(files, outputPath);
@@ -81,6 +85,14 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
       });
 
   process.stdout.write(`${JSON.stringify(result, null, 0)}\n`);
+}
+
+export function formatEpubFileName(
+  bookId: string,
+  volumeId: string,
+  title: string,
+): string {
+  return `${bookId}-${volumeId} ${safeFileName(title)}.epub`;
 }
 
 function safeFileName(value: string): string {

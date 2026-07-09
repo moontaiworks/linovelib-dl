@@ -20,6 +20,7 @@ import {
   parseChapterPage,
   walkPagesFrom,
 } from "../dist/index.js";
+import { formatEpubFileName } from "../dist/cli.js";
 
 const fixture = (name) => new URL(`../example.local/${name}`, import.meta.url);
 
@@ -129,6 +130,21 @@ test("parseCliOptions handles help and validates required book id", () => {
   assert.throws(
     () => parseCliOptions(["--book-id", "2013", "--request-interval-ms", "-1"]),
     /non-negative integer/,
+  );
+});
+
+test("formatEpubFileName prefixes the volume title with Linovelib ids", () => {
+  assert.equal(
+    formatEpubFileName(
+      "2013",
+      "72288",
+      "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+    ),
+    "2013-72288 無職轉生 ～到了異世界就拿出真本事～ 1 幼年期.epub",
+  );
+  assert.equal(
+    formatEpubFileName("2013", "72288", 'A<B>:"C"'),
+    "2013-72288 A_B___C_.epub",
   );
 });
 
