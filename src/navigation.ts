@@ -31,9 +31,15 @@ export async function* walkPagesFrom(
   }
 }
 
-export function shouldContinueChapter(chapterId: string): (page: ChapterPage) => boolean {
+export function shouldContinueChapter(
+  chapterId: string,
+): (page: ChapterPage) => boolean {
   return (page) => {
     if (page.readParams.chapterid !== chapterId) {
+      return false;
+    }
+
+    if (page.nextUrl && page.indexUrl && page.nextUrl === page.indexUrl) {
       return false;
     }
 

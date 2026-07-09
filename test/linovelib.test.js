@@ -18,6 +18,7 @@ import {
   extractCatalogVolumes,
   extractCatalogChapters,
   parseChapterPage,
+  shouldContinueChapter,
   walkPagesFrom,
 } from "../dist/index.js";
 import { formatEpubFileName } from "../dist/cli.js";
@@ -560,6 +561,27 @@ test("parseChapterPage accepts compact live ReadParams without a semicolon", asy
 
   assert.equal(page.readParams.chapterid, "72034");
   assert.equal(page.nextUrl, "https://tw.linovelib.com/novel/2013/72035.html");
+});
+
+test("parseChapterPage keeps catalog navigation on a chapter's last page", async () => {
+  const page = parseChapterPage(
+    await readFixture("226930_2.html"),
+    "https://tw.linovelib.com/novel/2013/226930_2.html",
+  );
+
+  assert.equal(page.readParams.chapterid, "226930");
+  assert.equal(page.nextUrl, "https://tw.linovelib.com/novel/2013/catalog");
+  assert.equal(page.indexUrl, "https://tw.linovelib.com/novel/2013/catalog");
+  assert.equal(page.nextLinkLabel, "返回目录");
+});
+
+test("shouldContinueChapter stops when the next link returns to catalog", async () => {
+  const page = parseChapterPage(
+    await readFixture("226930_2.html"),
+    "https://tw.linovelib.com/novel/2013/226930_2.html",
+  );
+
+  assert.equal(shouldContinueChapter("226930")(page), false);
 });
 
 test("walkPagesFrom follows url_next through split pages", async () => {
