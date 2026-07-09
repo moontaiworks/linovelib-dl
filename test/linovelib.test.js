@@ -657,6 +657,35 @@ test("createVolumeEpubFiles embeds downloaded illustration assets", async () => 
   );
 });
 
+test("createVolumeEpubFiles leaves a placeholder and source link for missing images", async () => {
+  const page = parseChapterPage(
+    await readFixture("122012.html"),
+    "https://tw.linovelib.com/novel/2013/122012.html",
+  );
+
+  const files = createVolumeEpubFiles({
+    bookId: "2013",
+    title: "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+    identifier: "linovelib-2013-72033",
+    chapters: [
+      {
+        title: "插圖",
+        pages: [page],
+      },
+    ],
+  });
+
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  assert.match(
+    byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
+    /照片載入失敗/,
+  );
+  assert.match(
+    byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
+    /<a href="https:\/\/img3\.readpai\.com\/2\/2013\/122012\/163854\.jpg">https:\/\/img3\.readpai\.com\/2\/2013\/122012\/163854\.jpg<\/a>/,
+  );
+});
+
 test("downloadEpubImageAssets downloads unique images from chapter content", async () => {
   const page = parseChapterPage(
     await readFixture("122012.html"),
@@ -689,5 +718,44 @@ test("downloadEpubImageAssets downloads unique images from chapter content", asy
   assert.deepEqual(
     assets[0].content,
     Buffer.from("https://img3.readpai.com/2/2013/122012/163854.jpg"),
+  );
+});
+
+test("downloadEpubImageAssets skips failed image downloads", async () => {
+  const failingPage = {
+    content: [
+      { type: "img", raw: "", src: "https://img.example.test/missing.jpg" },
+      { type: "img", raw: "", src: "https://img.example.test/ok.jpg" },
+    ],
+  };
+  const fetched = [];
+
+  const assets = await downloadEpubImageAssets(
+    [
+      {
+        title: "插圖",
+        pages: [failingPage],
+      },
+    ],
+    async (url) => {
+      fetched.push(url);
+      if (url.endsWith("missing.jpg")) {
+        throw new Error(`failed to fetch ${url}: HTTP 404`);
+      }
+
+      return {
+        content: Buffer.from(url),
+        mediaType: "image/jpeg",
+      };
+    },
+  );
+
+  assert.deepEqual(fetched, [
+    "https://img.example.test/missing.jpg",
+    "https://img.example.test/ok.jpg",
+  ]);
+  assert.deepEqual(
+    assets.map((asset) => asset.sourceUrl),
+    ["https://img.example.test/ok.jpg"],
   );
 });

@@ -31,9 +31,7 @@ export interface EpubImageAsset {
   content: Buffer;
 }
 
-export type FetchEpubImage = (
-  url: string,
-) => Promise<{
+export type FetchEpubImage = (url: string) => Promise<{
   content: Buffer;
   mediaType?: string;
 }>;
@@ -46,18 +44,25 @@ export async function downloadEpubImageAssets(
   const assets: EpubImageAsset[] = [];
 
   for (const url of urls) {
-    const result = await fetchImage(url);
-    assets.push({
-      sourceUrl: url,
-      mediaType: result.mediaType ?? inferMediaTypeFromUrl(url),
-      content: result.content,
-    });
+    try {
+      const result = await fetchImage(url);
+      assets.push({
+        sourceUrl: url,
+        mediaType: result.mediaType ?? inferMediaTypeFromUrl(url),
+        content: result.content,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Skipping image asset ${url}: ${message}`);
+    }
   }
 
   return assets;
 }
 
-export function createVolumeEpubFiles(input: CreateVolumeEpubFilesInput): EpubFile[] {
+export function createVolumeEpubFiles(
+  input: CreateVolumeEpubFilesInput,
+): EpubFile[] {
   const chapters = input.chapters.map((chapter, index) => ({
     ...chapter,
     id: `chapter-${String(index + 1).padStart(3, "0")}`,
@@ -89,7 +94,12 @@ export function createVolumeEpubFiles(input: CreateVolumeEpubFilesInput): EpubFi
     },
     ...chapters.map((chapter) => ({
       path: `OEBPS/${chapter.href}`,
-      content: renderChapterXhtml(input.title, chapter.title, chapter.pages, images),
+      content: renderChapterXhtml(
+        input.title,
+        chapter.title,
+        chapter.pages,
+        images,
+      ),
     })),
     ...images.map((image) => ({
       path: `OEBPS/${image.href}`,
@@ -98,7 +108,10 @@ export function createVolumeEpubFiles(input: CreateVolumeEpubFilesInput): EpubFi
   ];
 }
 
-export async function writeEpubFile(files: EpubFile[], outputPath: string): Promise<void> {
+export async function writeEpubFile(
+  files: EpubFile[],
+  outputPath: string,
+): Promise<void> {
   await mkdir(dirname(outputPath), { recursive: true });
 
   const zip = new yazl.ZipFile();
@@ -142,7 +155,9 @@ function renderContentOpf(
         `    <item id="${chapter.id}" href="${xmlAttr(chapter.href)}" media-type="application/xhtml+xml"/>`,
     )
     .join("\n");
-  const spine = chapters.map((chapter) => `    <itemref idref="${chapter.id}"/>`).join("\n");
+  const spine = chapters
+    .map((chapter) => `    <itemref idref="${chapter.id}"/>`)
+    .join("\n");
   const imageManifest = images
     .map(
       (image) =>
@@ -151,7 +166,9 @@ function renderContentOpf(
         )}"/>`,
     )
     .join("\n");
-  const manifestItems = [chapterManifest, imageManifest].filter(Boolean).join("\n");
+  const manifestItems = [chapterManifest, imageManifest]
+    .filter(Boolean)
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="3.0">
@@ -179,7 +196,10 @@ function renderNavXhtml(
   chapters: Array<EpubChapterInput & { href: string }>,
 ): string {
   const items = chapters
-    .map((chapter) => `      <li><a href="${xmlAttr(chapter.href)}">${xmlText(chapter.title)}</a></li>`)
+    .map(
+      (chapter) =>
+        `      <li><a href="${xmlAttr(chapter.href)}">${xmlText(chapter.title)}</a></li>`,
+    )
     .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -206,7 +226,10 @@ function renderTocNcx(
 ): string {
   const navPoints = chapters
     .map(
-      (chapter, index) => `    <navPoint id="${chapter.id}" playOrder="${index + 1}">
+      (
+        chapter,
+        index,
+      ) => `    <navPoint id="${chapter.id}" playOrder="${index + 1}">
       <navLabel><text>${xmlText(chapter.title)}</text></navLabel>
       <content src="${xmlAttr(chapter.href)}"/>
     </navPoint>`,
@@ -232,7 +255,9 @@ function renderChapterXhtml(
   pages: ChapterPage[],
   images: EpubImageEntry[],
 ): string {
-  const imageBySourceUrl = new Map(images.map((image) => [image.sourceUrl, image]));
+  const imageBySourceUrl = new Map(
+    images.map((image) => [image.sourceUrl, image]),
+  );
   const paragraphs = pages
     .flatMap((page) => page.content)
     .map((node) => renderContentNode(node, imageBySourceUrl))
@@ -256,7 +281,10 @@ ${paragraphs}
 `;
 }
 
-function renderContentNode(node: ContentNode, imageBySourceUrl: Map<string, EpubImageEntry>): string {
+function renderContentNode(
+  node: ContentNode,
+  imageBySourceUrl: Map<string, EpubImageEntry>,
+): string {
   if (node.type === "br") {
     return "";
   }
@@ -267,7 +295,7 @@ function renderContentNode(node: ContentNode, imageBySourceUrl: Map<string, Epub
       return `      <p><img src="../${xmlAttr(image.href)}" alt="${xmlAttr(node.src)}"/></p>`;
     }
 
-    return `      <p><a href="${xmlAttr(node.src)}">${xmlText(node.src)}</a></p>`;
+    return `      <p>照片載入失敗</p>\n      <p><a href="${xmlAttr(node.src)}">${xmlText(node.src)}</a></p>`;
   }
 
   if ((node.type === "p" || node.type === "center") && node.text) {
@@ -338,7 +366,9 @@ function extensionForMediaType(mediaType: string, sourceUrl: string): string {
     return ".avif";
   }
 
-  return /\.[a-z0-9]+(?:[?#].*)?$/i.exec(new URL(sourceUrl).pathname)?.[0] ?? ".bin";
+  return (
+    /\.[a-z0-9]+(?:[?#].*)?$/i.exec(new URL(sourceUrl).pathname)?.[0] ?? ".bin"
+  );
 }
 
 function inferMediaTypeFromUrl(url: string): string {
