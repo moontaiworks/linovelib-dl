@@ -4,10 +4,12 @@ import test from "node:test";
 
 import {
   createLinovelHeaders,
+  downloadBook,
+  downloadChapter,
   extractCatalogChapters,
   parseChapterPage,
   walkPagesFrom,
-} from "../src/linovelib.js";
+} from "../dist/index.js";
 
 const fixture = (name) => new URL(`../example.local/${name}`, import.meta.url);
 
@@ -118,4 +120,66 @@ test("walkPagesFrom follows url_next through split pages", async () => {
     ["https://tw.linovelib.com/novel/2013/72034_2.html", "72034", "2"],
     ["https://tw.linovelib.com/novel/2013/72035.html", "72035", "1"],
   ]);
+});
+
+test("downloadChapter starts from a book id and chapter id", async () => {
+  const pages = new Map([
+    [
+      "https://tw.linovelib.com/novel/2013/72034.html",
+      await readFixture("72034.html"),
+    ],
+    [
+      "https://tw.linovelib.com/novel/2013/72034_2.html",
+      await readFixture("72034_2.html"),
+    ],
+    [
+      "https://tw.linovelib.com/novel/2013/72035.html",
+      await readFixture("72035.html"),
+    ],
+  ]);
+
+  const result = await downloadChapter(
+    { bookId: "2013", chapterId: "72034", maxPages: 2 },
+    { fetchHtml: async (url) => pages.get(url) },
+  );
+
+  assert.equal(result.bookId, "2013");
+  assert.deepEqual(
+    result.pages.map((page) => [page.readParams.chapterid, page.readParams.page]),
+    [
+      ["72034", "1"],
+      ["72034", "2"],
+    ],
+  );
+});
+
+test("downloadBook starts from catalog first chapter", async () => {
+  const pages = new Map([
+    [
+      "https://tw.linovelib.com/novel/2013/catalog",
+      await readFixture("catalog.html"),
+    ],
+    [
+      "https://tw.linovelib.com/novel/2013/122012.html",
+      await readFixture("122012.html"),
+    ],
+    [
+      "https://tw.linovelib.com/novel/2013/72034.html",
+      await readFixture("72034.html"),
+    ],
+  ]);
+
+  const result = await downloadBook(
+    { bookId: "2013", maxPages: 2 },
+    { fetchHtml: async (url) => pages.get(url) },
+  );
+
+  assert.equal(result.bookId, "2013");
+  assert.deepEqual(
+    result.pages.map((page) => [page.readParams.chapterid, page.readParams.page]),
+    [
+      ["122012", "1"],
+      ["72034", "1"],
+    ],
+  );
 });
