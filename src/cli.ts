@@ -4,10 +4,10 @@ import {
   createThrottledFetchBinary,
   createVolumeEpubFiles,
   downloadBook,
-  downloadCatalogVolumes,
   downloadEpubImageAssets,
   downloadChapter,
   fetchLinovelBinary,
+  streamCatalogVolumes,
   writeEpubFile,
 } from "./index.js";
 import { formatCliHelp, parseCliOptions } from "./cli-options.js";
@@ -26,18 +26,17 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
       throw new Error("--output is required when --format epub");
     }
 
-    const volumes = await downloadCatalogVolumes({
-      bookId: options.bookId,
-      volumeId: options.volumeId,
-      maxPages: options.maxPages,
-      requestIntervalMs: options.requestIntervalMs,
-    });
     const fetchImage = createThrottledFetchBinary(fetchLinovelBinary, {
       intervalMs: options.requestIntervalMs,
     });
 
     const written = [];
-    for (const result of volumes) {
+    for await (const result of streamCatalogVolumes({
+      bookId: options.bookId,
+      volumeId: options.volumeId,
+      maxPages: options.maxPages,
+      requestIntervalMs: options.requestIntervalMs,
+    })) {
       const identifier = `linovelib-${options.bookId}-${result.volume.volumeId}`;
       const chapters = result.chapters.map((chapter) => ({
         title: chapter.title,
@@ -62,7 +61,9 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
       });
     }
 
-    process.stdout.write(`${JSON.stringify({ bookId: options.bookId, files: written }, null, 0)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ bookId: options.bookId, files: written }, null, 0)}\n`,
+    );
     return;
   }
 

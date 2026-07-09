@@ -25,7 +25,11 @@ export {
   extractVolumePageChapters,
 } from "./catalog.js";
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
-export { createVolumeEpubFiles, downloadEpubImageAssets, writeEpubFile } from "./epub.js";
+export {
+  createVolumeEpubFiles,
+  downloadEpubImageAssets,
+  writeEpubFile,
+} from "./epub.js";
 export {
   createLinovelImageHeaders,
   createLinovelHeaders,
@@ -96,6 +100,19 @@ export async function downloadCatalogVolumes(
   input: DownloadVolumeInput,
   deps: Partial<LinovelDeps> = {},
 ): Promise<DownloadVolumeResult[]> {
+  const results: DownloadVolumeResult[] = [];
+
+  for await (const result of streamCatalogVolumes(input, deps)) {
+    results.push(result);
+  }
+
+  return results;
+}
+
+export async function* streamCatalogVolumes(
+  input: DownloadVolumeInput,
+  deps: Partial<LinovelDeps> = {},
+): AsyncGenerator<DownloadVolumeResult> {
   const fetchHtml = resolveFetchHtml(input, deps);
   const catalogUrl = buildCatalogUrl(input.bookId);
   const catalogHtml = await fetchHtml(catalogUrl);
@@ -113,55 +130,12 @@ export async function downloadCatalogVolumes(
   }
 
   for (const volume of selectedVolumes) {
-    if (volume.chapters.some((chapter) => chapter.kind === "unresolved")) {
-      const volumeHtml = await fetchHtml(volume.url);
-      const volumePageChapters = extractVolumePageChapters(volumeHtml, volume.url);
-      if (volumePageChapters.length > 0) {
-        volume.chapters = volumePageChapters;
-      }
-    }
-
-    const unresolved = volume.chapters.filter((chapter) => chapter.kind === "unresolved");
-    if (unresolved.length > 0) {
-      throw new Error(
-        `volume ${volume.volumeId} has unresolved catalog chapters: ${unresolved
-          .map((chapter) => `${chapter.title} (${chapter.rawHref})`)
-          .join(", ")}`,
-      );
-    }
+    const resolvedVolume = await resolveCatalogVolume(volume, fetchHtml);
+    yield downloadVolumeFromEntryPoint(input.bookId, resolvedVolume, {
+      fetchHtml,
+      maxPages: input.maxPages,
+    });
   }
-
-  const results: DownloadVolumeResult[] = [];
-  for (const volume of selectedVolumes) {
-    const chapters: VolumeChapterResult[] = [];
-
-    for (const chapter of volume.chapters) {
-      if (chapter.kind !== "resolved") {
-        continue;
-      }
-
-      const chapterId = extractChapterId(chapter.url);
-      if (!chapterId) {
-        throw new Error(`could not extract chapter id from ${chapter.url}`);
-      }
-
-      chapters.push({
-        title: chapter.title,
-        url: chapter.url,
-        pages: (
-          await collectPages(input.bookId, chapter.url, {
-            fetchHtml,
-            maxPages: input.maxPages,
-            shouldContinue: shouldContinueChapter(chapterId),
-          })
-        ).pages,
-      });
-    }
-
-    results.push({ bookId: input.bookId, volume, chapters });
-  }
-
-  return results;
 }
 
 async function collectPages(
@@ -180,6 +154,117 @@ async function collectPages(
 
 function extractChapterId(url: string): string {
   return /\/(\d+)(?:_\d+)?\.html(?:[?#].*)?$/.exec(url)?.[1] ?? "";
+}
+
+async function resolveCatalogVolume(
+  volume: DownloadVolumeResult["volume"],
+  fetchHtml: LinovelDeps["fetchHtml"],
+): Promise<DownloadVolumeResult["volume"]> {
+  if (volume.chapters.some((chapter) => chapter.kind === "unresolved")) {
+    const volumeHtml = await fetchHtml(volume.url);
+    const volumePageChapters = extractVolumePageChapters(
+      volumeHtml,
+      volume.url,
+    );
+    if (volumePageChapters.length > 0) {
+      volume.chapters = volumePageChapters;
+    }
+  }
+
+  const unresolved = volume.chapters.filter(
+    (chapter) => chapter.kind === "unresolved",
+  );
+  if (unresolved.length > 0) {
+    throw new Error(
+      `volume ${volume.volumeId} has unresolved catalog chapters: ${unresolved
+        .map((chapter) => `${chapter.title} (${chapter.rawHref})`)
+        .join(", ")}`,
+    );
+  }
+
+  return volume;
+}
+
+async function downloadVolumeFromEntryPoint(
+  bookId: string,
+  volume: DownloadVolumeResult["volume"],
+  options: Parameters<typeof walkPagesFrom>[1],
+): Promise<DownloadVolumeResult> {
+  const resolvedChapters = volume.chapters.filter(
+    (chapter): chapter is Extract<typeof chapter, { kind: "resolved" }> =>
+      chapter.kind === "resolved",
+  );
+
+  if (resolvedChapters.length === 0) {
+    return { bookId, volume, chapters: [] };
+  }
+
+  const chapterMetaById = new Map(
+    resolvedChapters.map((chapter) => [extractChapterId(chapter.url), chapter]),
+  );
+  const firstChapter = resolvedChapters[0]!;
+  const lastChapter = resolvedChapters.at(-1)!;
+  const lastChapterId = extractChapterId(lastChapter.url);
+
+  if (!lastChapterId) {
+    throw new Error(`could not extract chapter id from ${lastChapter.url}`);
+  }
+
+  const chapters: Array<VolumeChapterResult & { chapterId: string }> = [];
+  let currentChapter: (VolumeChapterResult & { chapterId: string }) | null =
+    null;
+
+  for await (const page of walkPagesFrom(firstChapter.url, {
+    ...options,
+    shouldContinue: shouldContinueThroughChapter(lastChapterId),
+  })) {
+    const chapterId = page.readParams.chapterid;
+    if (!chapterId) {
+      throw new Error(`missing chapter id in page ${page.url}`);
+    }
+
+    const chapterMeta = chapterMetaById.get(chapterId);
+
+    if (!currentChapter || currentChapter.chapterId !== chapterId) {
+      if (currentChapter) {
+        chapters.push(currentChapter);
+      }
+
+      currentChapter = {
+        chapterId,
+        title: chapterMeta?.title ?? page.title,
+        url: chapterMeta?.url ?? page.url,
+        pages: [page],
+      };
+      continue;
+    }
+
+    currentChapter.pages.push(page);
+  }
+
+  if (currentChapter) {
+    chapters.push(currentChapter);
+  }
+
+  return {
+    bookId,
+    volume,
+    chapters: chapters.map(({ chapterId: _chapterId, ...chapter }) => chapter),
+  };
+}
+
+function shouldContinueThroughChapter(
+  lastChapterId: string,
+): (page: Parameters<ReturnType<typeof shouldContinueChapter>>[0]) => boolean {
+  const shouldContinueLastChapter = shouldContinueChapter(lastChapterId);
+
+  return (page) => {
+    if (page.readParams.chapterid !== lastChapterId) {
+      return true;
+    }
+
+    return shouldContinueLastChapter(page);
+  };
 }
 
 function resolveFetchHtml(

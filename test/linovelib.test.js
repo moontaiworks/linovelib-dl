@@ -13,6 +13,7 @@ import {
   downloadBook,
   downloadCatalogVolumes,
   downloadChapter,
+  streamCatalogVolumes,
   extractVolumePageChapters,
   extractCatalogVolumes,
   extractCatalogChapters,
@@ -38,13 +39,19 @@ test("createLinovelImageHeaders sends the referer needed by readpai images", () 
   assert.deepEqual(createLinovelImageHeaders(), {
     Referer: "https://tw.linovelib.com/",
   });
-  assert.deepEqual(createLinovelImageHeaders({ Accept: "image/avif,image/webp,*/*" }), {
-    Accept: "image/avif,image/webp,*/*",
-    Referer: "https://tw.linovelib.com/",
-  });
-  assert.deepEqual(createLinovelImageHeaders({ referer: "https://example.test/" }), {
-    referer: "https://example.test/",
-  });
+  assert.deepEqual(
+    createLinovelImageHeaders({ Accept: "image/avif,image/webp,*/*" }),
+    {
+      Accept: "image/avif,image/webp,*/*",
+      Referer: "https://tw.linovelib.com/",
+    },
+  );
+  assert.deepEqual(
+    createLinovelImageHeaders({ referer: "https://example.test/" }),
+    {
+      referer: "https://example.test/",
+    },
+  );
 });
 
 test("parseCliOptions accepts book and chapter download options", () => {
@@ -107,9 +114,18 @@ test("parseCliOptions handles help and validates required book id", () => {
   assert.match(formatCliHelp(), /--book-id/);
   assert.match(formatCliHelp(), /--format/);
   assert.match(formatCliHelp(), /--request-interval-ms/);
-  assert.throws(() => parseCliOptions([]), /Missing required option: --book-id/);
-  assert.throws(() => parseCliOptions(["--book-id", "2013", "--max-pages", "0"]), /positive integer/);
-  assert.throws(() => parseCliOptions(["--book-id", "2013", "--format", "txt"]), /--format/);
+  assert.throws(
+    () => parseCliOptions([]),
+    /Missing required option: --book-id/,
+  );
+  assert.throws(
+    () => parseCliOptions(["--book-id", "2013", "--max-pages", "0"]),
+    /positive integer/,
+  );
+  assert.throws(
+    () => parseCliOptions(["--book-id", "2013", "--format", "txt"]),
+    /--format/,
+  );
   assert.throws(
     () => parseCliOptions(["--book-id", "2013", "--request-interval-ms", "-1"]),
     /non-negative integer/,
@@ -180,9 +196,18 @@ test("extractCatalogVolumes groups catalog chapters by physical volume", async (
   );
 
   assert.equal(volumes[0].volumeId, "72033");
-  assert.equal(volumes[0].title, "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期");
-  assert.equal(volumes[0].url, "https://tw.linovelib.com/novel/2013/vol_72033.html");
-  assert.equal(volumes[0].coverUrl, "https://img3.readpai.com/cover/2013/163854.jpg");
+  assert.equal(
+    volumes[0].title,
+    "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+  );
+  assert.equal(
+    volumes[0].url,
+    "https://tw.linovelib.com/novel/2013/vol_72033.html",
+  );
+  assert.equal(
+    volumes[0].coverUrl,
+    "https://img3.readpai.com/cover/2013/163854.jpg",
+  );
   assert.equal(volumes[0].chapters.length, 20);
   assert.deepEqual(volumes[0].chapters.slice(0, 3), [
     {
@@ -203,7 +228,10 @@ test("extractCatalogVolumes groups catalog chapters by physical volume", async (
   ]);
 
   assert.equal(volumes[1].volumeId, "72048");
-  assert.equal(volumes[1].title, "無職轉生 ～到了異世界就拿出真本事～ 2 少年期 家庭教師篇");
+  assert.equal(
+    volumes[1].title,
+    "無職轉生 ～到了異世界就拿出真本事～ 2 少年期 家庭教師篇",
+  );
   assert.deepEqual(volumes[1].chapters[2], {
     kind: "unresolved",
     title: "第一話「大小姐的暴力」",
@@ -223,7 +251,10 @@ test("extractVolumePageChapters reads complete links from a volume page", () => 
   `;
 
   assert.deepEqual(
-    extractVolumePageChapters(html, "https://tw.linovelib.com/novel/2013/vol_72048.html"),
+    extractVolumePageChapters(
+      html,
+      "https://tw.linovelib.com/novel/2013/vol_72048.html",
+    ),
     [
       {
         kind: "resolved",
@@ -285,9 +316,63 @@ test("downloadCatalogVolumes resolves catalog placeholders from the volume page"
     },
   );
 
-  assert.ok(fetched.includes("https://tw.linovelib.com/novel/2013/vol_72048.html"));
+  assert.ok(
+    fetched.includes("https://tw.linovelib.com/novel/2013/vol_72048.html"),
+  );
   assert.equal(result[0].volume.chapters[1].kind, "resolved");
-  assert.equal(result[0].volume.chapters[1].url, "https://tw.linovelib.com/novel/2013/72050.html");
+  assert.equal(
+    result[0].volume.chapters[1].url,
+    "https://tw.linovelib.com/novel/2013/72050.html",
+  );
+});
+
+test("streamCatalogVolumes yields the first completed volume before fetching the next one", async () => {
+  const catalogHtml = `
+    <div class="catalog-volume">
+      <ul class="volume-chapters">
+        <li class="chapter-bar chapter-li"><a href="/novel/2013/vol_72033.html"><h3>第一卷</h3></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72034.html"><span class="chapter-index">序章</span></a></li>
+      </ul>
+    </div>
+    <div class="catalog-volume">
+      <ul class="volume-chapters">
+        <li class="chapter-bar chapter-li"><a href="/novel/2013/vol_72048.html"><h3>第二卷</h3></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72035.html"><span class="chapter-index">第一話</span></a></li>
+      </ul>
+    </div>
+  `;
+  const fetched = [];
+  const iterator = streamCatalogVolumes(
+    { bookId: "2013" },
+    {
+      fetchHtml: async (url) => {
+        fetched.push(url);
+        if (url === "https://tw.linovelib.com/novel/2013/catalog") {
+          return catalogHtml;
+        }
+        if (url === "https://tw.linovelib.com/novel/2013/72034.html") {
+          return readFixture("72034.html");
+        }
+        if (url === "https://tw.linovelib.com/novel/2013/72034_2.html") {
+          return readFixture("72034_2.html");
+        }
+        if (url === "https://tw.linovelib.com/novel/2013/72035.html") {
+          return readFixture("72035.html");
+        }
+        throw new Error(`unexpected url: ${url}`);
+      },
+    },
+  );
+
+  const first = await iterator.next();
+
+  assert.equal(first.done, false);
+  assert.equal(first.value.volume.volumeId, "72033");
+  assert.deepEqual(fetched, [
+    "https://tw.linovelib.com/novel/2013/catalog",
+    "https://tw.linovelib.com/novel/2013/72034.html",
+    "https://tw.linovelib.com/novel/2013/72034_2.html",
+  ]);
 });
 
 test("extractCatalogChapters tolerates nested markup inside a catalog item", () => {
@@ -317,7 +402,8 @@ test("parseChapterPage rejects degraded reader HTML", async () => {
   const html = await readFixture("72034-inprivate.html");
 
   assert.throws(
-    () => parseChapterPage(html, "https://tw.linovelib.com/novel/2013/72034.html"),
+    () =>
+      parseChapterPage(html, "https://tw.linovelib.com/novel/2013/72034.html"),
     /degraded reader page/,
   );
 });
@@ -333,7 +419,10 @@ test("parseChapterPage restores obfuscated paragraphs and extracts text", async 
 
   assert.equal(page.title, "序章");
   assert.equal(page.readParams.chapterid, "72034");
-  assert.equal(page.nextUrl, "https://tw.linovelib.com/novel/2013/72034_2.html");
+  assert.equal(
+    page.nextUrl,
+    "https://tw.linovelib.com/novel/2013/72034_2.html",
+  );
   assert.equal(page.text.trim(), expected);
 });
 
@@ -345,9 +434,16 @@ test("parseChapterPage extracts lazy-loaded illustration image URLs", async () =
 
   const firstImage = page.content.find((node) => node.type === "img");
 
-  assert.ok(page.lines.includes("https://img3.readpai.com/2/2013/122012/163854.jpg"));
-  assert.equal(firstImage?.src, "https://img3.readpai.com/2/2013/122012/163854.jpg");
-  assert.ok(!page.lines.includes("https://tw.linovelib.com/images/sloading.svg"));
+  assert.ok(
+    page.lines.includes("https://img3.readpai.com/2/2013/122012/163854.jpg"),
+  );
+  assert.equal(
+    firstImage?.src,
+    "https://img3.readpai.com/2/2013/122012/163854.jpg",
+  );
+  assert.ok(
+    !page.lines.includes("https://tw.linovelib.com/images/sloading.svg"),
+  );
 });
 
 test("parseChapterPage accepts compact live ReadParams without a semicolon", async () => {
@@ -421,7 +517,10 @@ test("downloadChapter starts from a book id and chapter id", async () => {
 
   assert.equal(result.bookId, "2013");
   assert.deepEqual(
-    result.pages.map((page) => [page.readParams.chapterid, page.readParams.page]),
+    result.pages.map((page) => [
+      page.readParams.chapterid,
+      page.readParams.page,
+    ]),
     [
       ["72034", "1"],
       ["72034", "2"],
@@ -452,7 +551,10 @@ test("downloadBook starts from catalog first chapter", async () => {
 
   assert.equal(result.bookId, "2013");
   assert.deepEqual(
-    result.pages.map((page) => [page.readParams.chapterid, page.readParams.page]),
+    result.pages.map((page) => [
+      page.readParams.chapterid,
+      page.readParams.page,
+    ]),
     [
       ["122012", "1"],
       ["72034", "1"],
@@ -509,7 +611,10 @@ test("createVolumeEpubFiles renders a valid EPUB file set for a volume", async (
   assert.match(byPath.get("OEBPS/content.opf").content, /linovelib-2013-72033/);
   assert.match(byPath.get("OEBPS/nav.xhtml").content, /序章/);
   assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /序章/);
-  assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /本人現年三十四歲/);
+  assert.match(
+    byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
+    /本人現年三十四歲/,
+  );
 });
 
 test("createVolumeEpubFiles embeds downloaded illustration assets", async () => {
@@ -538,8 +643,14 @@ test("createVolumeEpubFiles embeds downloaded illustration assets", async () => 
   });
 
   const byPath = new Map(files.map((file) => [file.path, file]));
-  assert.deepEqual(byPath.get("OEBPS/images/image-001.jpg").content, Buffer.from("fake-image"));
-  assert.match(byPath.get("OEBPS/content.opf").content, /media-type="image\/jpeg"/);
+  assert.deepEqual(
+    byPath.get("OEBPS/images/image-001.jpg").content,
+    Buffer.from("fake-image"),
+  );
+  assert.match(
+    byPath.get("OEBPS/content.opf").content,
+    /media-type="image\/jpeg"/,
+  );
   assert.match(
     byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
     /<img src="\.\.\/images\/image-001\.jpg" alt="https:\/\/img3\.readpai\.com\/2\/2013\/122012\/163854\.jpg"\/>/,
@@ -571,6 +682,12 @@ test("downloadEpubImageAssets downloads unique images from chapter content", asy
 
   assert.equal(fetched[0], "https://img3.readpai.com/2/2013/122012/163854.jpg");
   assert.equal(fetched.length, new Set(fetched).size);
-  assert.equal(assets[0].sourceUrl, "https://img3.readpai.com/2/2013/122012/163854.jpg");
-  assert.deepEqual(assets[0].content, Buffer.from("https://img3.readpai.com/2/2013/122012/163854.jpg"));
+  assert.equal(
+    assets[0].sourceUrl,
+    "https://img3.readpai.com/2/2013/122012/163854.jpg",
+  );
+  assert.deepEqual(
+    assets[0].content,
+    Buffer.from("https://img3.readpai.com/2/2013/122012/163854.jpg"),
+  );
 });
