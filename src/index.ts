@@ -1,28 +1,48 @@
-import { buildCatalogUrl, buildChapterUrl, extractCatalogChapters } from "./catalog.js";
+import {
+  buildCatalogUrl,
+  buildChapterUrl,
+  extractCatalogChapters,
+  extractCatalogVolumes,
+} from "./catalog.js";
 import { createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
 import { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 import {
   DownloadBookInput,
   DownloadChapterInput,
   DownloadResult,
+  DownloadVolumeInput,
+  DownloadVolumeResult,
+  VolumeChapterResult,
   LinovelDeps,
 } from "./types.js";
 
-export { buildCatalogUrl, buildChapterUrl, extractCatalogChapters } from "./catalog.js";
+export {
+  buildCatalogUrl,
+  buildChapterUrl,
+  extractCatalogChapters,
+  extractCatalogVolumes,
+} from "./catalog.js";
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
+export { createVolumeEpubFiles, writeEpubFile } from "./epub.js";
 export { createLinovelHeaders, createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
 export { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 export { parseChapterPage } from "./page.js";
 export type {
   CatalogChapter,
+  CatalogVolume,
+  CatalogVolumeChapter,
   ChapterPage,
   DownloadBookInput,
   DownloadChapterInput,
   DownloadResult,
+  DownloadVolumeInput,
+  DownloadVolumeResult,
   FetchHtml,
   LinovelDeps,
   ReadParams,
+  VolumeChapterResult,
 } from "./types.js";
+export type { CreateVolumeEpubFilesInput, EpubChapterInput, EpubFile } from "./epub.js";
 
 export async function downloadBook(
   input: DownloadBookInput,
@@ -57,6 +77,70 @@ export async function downloadChapter(
   });
 }
 
+export async function downloadCatalogVolumes(
+  input: DownloadVolumeInput,
+  deps: Partial<LinovelDeps> = {},
+): Promise<DownloadVolumeResult[]> {
+  const fetchHtml = resolveFetchHtml(input, deps);
+  const catalogUrl = buildCatalogUrl(input.bookId);
+  const catalogHtml = await fetchHtml(catalogUrl);
+  const volumes = extractCatalogVolumes(catalogHtml, catalogUrl);
+  const selectedVolumes = input.volumeId
+    ? volumes.filter((volume) => volume.volumeId === input.volumeId)
+    : volumes;
+
+  if (selectedVolumes.length === 0) {
+    throw new Error(
+      input.volumeId
+        ? `catalog has no volume ${input.volumeId}: ${catalogUrl}`
+        : `catalog has no volumes: ${catalogUrl}`,
+    );
+  }
+
+  for (const volume of selectedVolumes) {
+    const unresolved = volume.chapters.filter((chapter) => chapter.kind === "unresolved");
+    if (unresolved.length > 0) {
+      throw new Error(
+        `volume ${volume.volumeId} has unresolved catalog chapters: ${unresolved
+          .map((chapter) => `${chapter.title} (${chapter.rawHref})`)
+          .join(", ")}`,
+      );
+    }
+  }
+
+  const results: DownloadVolumeResult[] = [];
+  for (const volume of selectedVolumes) {
+    const chapters: VolumeChapterResult[] = [];
+
+    for (const chapter of volume.chapters) {
+      if (chapter.kind !== "resolved") {
+        continue;
+      }
+
+      const chapterId = extractChapterId(chapter.url);
+      if (!chapterId) {
+        throw new Error(`could not extract chapter id from ${chapter.url}`);
+      }
+
+      chapters.push({
+        title: chapter.title,
+        url: chapter.url,
+        pages: (
+          await collectPages(input.bookId, chapter.url, {
+            fetchHtml,
+            maxPages: input.maxPages,
+            shouldContinue: shouldContinueChapter(chapterId),
+          })
+        ).pages,
+      });
+    }
+
+    results.push({ bookId: input.bookId, volume, chapters });
+  }
+
+  return results;
+}
+
 async function collectPages(
   bookId: string,
   startUrl: string,
@@ -69,6 +153,10 @@ async function collectPages(
   }
 
   return { bookId, pages };
+}
+
+function extractChapterId(url: string): string {
+  return /\/(\d+)(?:_\d+)?\.html(?:[?#].*)?$/.exec(url)?.[1] ?? "";
 }
 
 function resolveFetchHtml(

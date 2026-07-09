@@ -5,6 +5,26 @@ export interface CatalogChapter {
   url: string;
 }
 
+export type CatalogVolumeChapter =
+  | {
+      kind: "resolved";
+      title: string;
+      url: string;
+    }
+  | {
+      kind: "unresolved";
+      title: string;
+      rawHref: string;
+    };
+
+export interface CatalogVolume {
+  volumeId: string;
+  title: string;
+  url: string;
+  coverUrl?: string;
+  chapters: CatalogVolumeChapter[];
+}
+
 export interface ContentNode {
   type: "p" | "center" | "img" | "br";
   raw: string;
@@ -63,6 +83,10 @@ export interface DownloadBookInput {
   requestIntervalMs?: number;
 }
 
+export interface DownloadVolumeInput extends DownloadBookInput {
+  volumeId?: string;
+}
+
 export interface DownloadChapterInput extends DownloadBookInput {
   chapterId: string;
 }
@@ -70,4 +94,16 @@ export interface DownloadChapterInput extends DownloadBookInput {
 export interface DownloadResult {
   bookId: string;
   pages: ChapterPage[];
+}
+
+export interface VolumeChapterResult {
+  title: string;
+  url: string;
+  pages: ChapterPage[];
+}
+
+export interface DownloadVolumeResult {
+  bookId: string;
+  volume: CatalogVolume;
+  chapters: VolumeChapterResult[];
 }

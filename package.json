@@ -16,6 +16,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "cheerio": "^1.2.0"
+    "cheerio": "^1.2.0",
+    "yazl": "^3.3.1"
   }
 }

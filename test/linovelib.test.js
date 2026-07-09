@@ -4,11 +4,14 @@ import test from "node:test";
 
 import {
   createThrottledFetchHtml,
+  createVolumeEpubFiles,
   formatCliHelp,
   parseCliOptions,
   createLinovelHeaders,
   downloadBook,
+  downloadCatalogVolumes,
   downloadChapter,
+  extractCatalogVolumes,
   extractCatalogChapters,
   parseChapterPage,
   walkPagesFrom,
@@ -44,14 +47,40 @@ test("parseCliOptions accepts book and chapter download options", () => {
       command: "download",
       bookId: "2013",
       chapterId: "72034",
+      format: "json",
       maxPages: 2,
       requestIntervalMs: 500,
+    },
+  );
+
+  assert.deepEqual(
+    parseCliOptions([
+      "-b",
+      "2013",
+      "--volume-id",
+      "72033",
+      "--format",
+      "epub",
+      "--output",
+      "books",
+      "--max-pages",
+      "1",
+    ]),
+    {
+      command: "download",
+      bookId: "2013",
+      volumeId: "72033",
+      format: "epub",
+      output: "books",
+      maxPages: 1,
+      requestIntervalMs: 250,
     },
   );
 
   assert.deepEqual(parseCliOptions(["-b", "2013", "--max-pages", "1"]), {
     command: "download",
     bookId: "2013",
+    format: "json",
     maxPages: 1,
     requestIntervalMs: 250,
   });
@@ -60,9 +89,11 @@ test("parseCliOptions accepts book and chapter download options", () => {
 test("parseCliOptions handles help and validates required book id", () => {
   assert.deepEqual(parseCliOptions(["--help"]), { command: "help" });
   assert.match(formatCliHelp(), /--book-id/);
+  assert.match(formatCliHelp(), /--format/);
   assert.match(formatCliHelp(), /--request-interval-ms/);
   assert.throws(() => parseCliOptions([]), /Missing required option: --book-id/);
   assert.throws(() => parseCliOptions(["--book-id", "2013", "--max-pages", "0"]), /positive integer/);
+  assert.throws(() => parseCliOptions(["--book-id", "2013", "--format", "txt"]), /--format/);
   assert.throws(
     () => parseCliOptions(["--book-id", "2013", "--request-interval-ms", "-1"]),
     /non-negative integer/,
@@ -122,6 +153,46 @@ test("extractCatalogChapters reads chapter links in catalog order", async () => 
       url: "https://tw.linovelib.com/novel/2013/72035.html",
     },
   ]);
+});
+
+test("extractCatalogVolumes groups catalog chapters by physical volume", async () => {
+  const html = await readFixture("catalog.html");
+
+  const volumes = extractCatalogVolumes(
+    html,
+    "https://tw.linovelib.com/novel/2013/catalog",
+  );
+
+  assert.equal(volumes[0].volumeId, "72033");
+  assert.equal(volumes[0].title, "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期");
+  assert.equal(volumes[0].url, "https://tw.linovelib.com/novel/2013/vol_72033.html");
+  assert.equal(volumes[0].coverUrl, "https://img3.readpai.com/cover/2013/163854.jpg");
+  assert.equal(volumes[0].chapters.length, 20);
+  assert.deepEqual(volumes[0].chapters.slice(0, 3), [
+    {
+      kind: "resolved",
+      title: "插圖",
+      url: "https://tw.linovelib.com/novel/2013/122012.html",
+    },
+    {
+      kind: "resolved",
+      title: "序章",
+      url: "https://tw.linovelib.com/novel/2013/72034.html",
+    },
+    {
+      kind: "resolved",
+      title: "第一話「難道是：異世界」",
+      url: "https://tw.linovelib.com/novel/2013/72035.html",
+    },
+  ]);
+
+  assert.equal(volumes[1].volumeId, "72048");
+  assert.equal(volumes[1].title, "無職轉生 ～到了異世界就拿出真本事～ 2 少年期 家庭教師篇");
+  assert.deepEqual(volumes[1].chapters[2], {
+    kind: "unresolved",
+    title: "第一話「大小姐的暴力」",
+    rawHref: "javascript:cid(1)",
+  });
 });
 
 test("extractCatalogChapters tolerates nested markup inside a catalog item", () => {
@@ -279,4 +350,50 @@ test("downloadBook starts from catalog first chapter", async () => {
       ["72034", "1"],
     ],
   );
+});
+
+test("downloadCatalogVolumes rejects volumes with unresolved catalog chapters", async () => {
+  const catalogHtml = await readFixture("catalog.html");
+
+  await assert.rejects(
+    () =>
+      downloadCatalogVolumes(
+        { bookId: "2013", volumeId: "72048" },
+        {
+          fetchHtml: async (url) => {
+            assert.equal(url, "https://tw.linovelib.com/novel/2013/catalog");
+            return catalogHtml;
+          },
+        },
+      ),
+    /volume 72048 has unresolved catalog chapters: 第一話「大小姐的暴力」 \(javascript:cid\(1\)\)/,
+  );
+});
+
+test("createVolumeEpubFiles renders a valid EPUB file set for a volume", async () => {
+  const page = parseChapterPage(
+    await readFixture("72034.html"),
+    "https://tw.linovelib.com/novel/2013/72034.html",
+  );
+
+  const files = createVolumeEpubFiles({
+    bookId: "2013",
+    title: "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+    identifier: "linovelib-2013-72033",
+    chapters: [
+      {
+        title: "序章",
+        pages: [page],
+      },
+    ],
+  });
+
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  assert.equal(byPath.get("mimetype").content, "application/epub+zip");
+  assert.equal(byPath.get("mimetype").compression, "store");
+  assert.match(byPath.get("META-INF/container.xml").content, /content\.opf/);
+  assert.match(byPath.get("OEBPS/content.opf").content, /linovelib-2013-72033/);
+  assert.match(byPath.get("OEBPS/nav.xhtml").content, /序章/);
+  assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /序章/);
+  assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /本人現年三十四歲/);
 });
