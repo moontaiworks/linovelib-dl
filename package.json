@@ -6,9 +6,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test"
+    "test": "tsc -p tsconfig.json && node --test"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0"
   }
 }

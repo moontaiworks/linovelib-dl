@@ -1,4 +1,5 @@
-import { absolutizeUrl, cleanText, matchFirst } from "./html.js";
+import * as cheerio from "cheerio";
+import { absolutizeUrl } from "./html.js";
 import { CatalogChapter, DEFAULT_BASE_URL } from "./types.js";
 
 export function buildCatalogUrl(bookId: string, baseUrl = DEFAULT_BASE_URL): string {
@@ -10,25 +11,30 @@ export function buildChapterUrl(bookId: string, chapterId: string, baseUrl = DEF
 }
 
 export function extractCatalogChapters(html: string, catalogUrl: string): CatalogChapter[] {
+  const $ = cheerio.load(html);
   const chapters: CatalogChapter[] = [];
-  const chapterPattern = /<li\b[^>]*class=["'][^"']*\bjsChapter\b[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi;
 
-  for (const match of html.matchAll(chapterPattern)) {
-    const itemHtml = match[1] ?? "";
-    const href = matchFirst(itemHtml, /<a\b[^>]*href=["']([^"']+)["']/i);
-    const title =
-      matchFirst(itemHtml, /<span\b[^>]*class=["'][^"']*\bchapter-index\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i) ||
-      itemHtml;
+  $(".jsChapter").each((_, element) => {
+    const item = $(element);
+    const link = item.children("a").first();
+    const href = link.attr("href");
 
     if (!href) {
-      continue;
+      return;
     }
 
+    const titleNode = link.find(".chapter-index").first();
+    const title = titleNode.length > 0 ? titleNode.text() : link.text();
+
     chapters.push({
-      title: cleanText(title),
+      title: normalizeDomText(title),
       url: absolutizeUrl(href, catalogUrl),
     });
-  }
+  });
 
   return chapters;
+}
+
+function normalizeDomText(value: string): string {
+  return value.replace(/\u00a0/g, " ").replace(/[ \t\r\n]+/g, " ").trim();
 }

@@ -1,4 +1,5 @@
-import { cleanText, decodeHtml, matchFirst } from "./html.js";
+import * as cheerio from "cheerio";
+import { decodeHtml } from "./html.js";
 import { restoreParagraphOrder } from "./obfuscation.js";
 import { absolutizeUrl } from "./html.js";
 import { ChapterPage, ContentNode, ReadParams } from "./types.js";
@@ -8,28 +9,34 @@ export function parseChapterPage(html: string, pageUrl: string): ChapterPage {
     throw new Error(`degraded reader page: ${pageUrl}`);
   }
 
-  const readParams = parseReadParams(html);
-  const contentHtml = extractAcontentHtml(html);
-  const nodes = parseContentNodes(contentHtml);
+  const $ = cheerio.load(html);
+  const readParams = parseReadParams($);
+  const nodes = parseContentNodes($);
   const restoredNodes = restoreParagraphOrder(nodes, readParams.chapterid);
   const lines = extractTextLines(restoredNodes);
 
   return {
     url: pageUrl,
-    title: cleanText(matchFirst(html, /<h1\b[^>]*id=["']atitle["'][^>]*>([\s\S]*?)<\/h1>/i)),
-    volumeTitle: cleanText(matchFirst(html, /<div\b[^>]*class=["'][^"']*\batitle\b[^"']*["'][^>]*>[\s\S]*?<h3>([\s\S]*?)<\/h3>/i)),
+    title: normalizeDomText($("#atitle").first().text()),
+    volumeTitle: normalizeDomText($(".atitle h3").first().text()),
     readParams,
     previousUrl: readParams.url_previous ? absolutizeUrl(readParams.url_previous, pageUrl) : null,
     nextUrl: readParams.url_next ? absolutizeUrl(readParams.url_next, pageUrl) : null,
     indexUrl: readParams.url_index ? absolutizeUrl(readParams.url_index, pageUrl) : null,
-    nextLinkLabel: extractNextLinkLabel(html),
+    nextLinkLabel: normalizeDomText($("#footlink .nextlink").first().text()),
     lines,
     text: lines.join("\n").trim(),
   };
 }
 
-function parseReadParams(html: string): ReadParams {
-  const body = matchFirst(html, /var\s+ReadParams\s*=\s*\{([\s\S]*?)\}\s*;?\s*<\/script>/i);
+function parseReadParams($: cheerio.CheerioAPI): ReadParams {
+  const scriptText =
+    $("script")
+      .toArray()
+      .map((script) => $(script).html() ?? "")
+      .find((text) => text.includes("ReadParams")) ?? "";
+  const body = /var\s+ReadParams\s*=\s*\{([\s\S]*?)\}\s*;?/i.exec(scriptText)?.[1] ?? "";
+
   if (!body) {
     throw new Error("missing ReadParams");
   }
@@ -47,51 +54,25 @@ function parseReadParams(html: string): ReadParams {
   return params;
 }
 
-function extractAcontentHtml(html: string): string {
-  const startMatch = /<div\b[^>]*id=["']acontent["'][^>]*>/i.exec(html);
-  if (!startMatch) {
+function parseContentNodes($: cheerio.CheerioAPI): ContentNode[] {
+  const content = $("#acontent").first();
+  if (content.length === 0) {
     throw new Error("missing #acontent");
   }
 
-  const startIndex = startMatch.index + startMatch[0].length;
-  const endIndex = findClosingDiv(html, startIndex);
-  return html.slice(startIndex, endIndex);
-}
-
-function findClosingDiv(html: string, startIndex: number): number {
-  const tagPattern = /<\/?div\b[^>]*>/gi;
-  tagPattern.lastIndex = startIndex;
-  let depth = 1;
-
-  for (const match of html.matchAll(tagPattern)) {
-    if (match[0][1] === "/") {
-      depth--;
-      if (depth === 0) {
-        return match.index;
-      }
-    } else {
-      depth++;
-    }
-  }
-
-  throw new Error("unterminated #acontent");
-}
-
-function parseContentNodes(contentHtml: string): ContentNode[] {
   const nodes: ContentNode[] = [];
-  const nodePattern =
-    /<p\b[^>]*>[\s\S]*?<\/p>|<center\b[^>]*>[\s\S]*?<\/center>|<img\b[^>]*>|<br\b[^>]*>/gi;
 
-  for (const match of contentHtml.matchAll(nodePattern)) {
-    const raw = match[0];
-    const type = raw.slice(1).match(/^\w+/)?.[0]?.toLowerCase();
+  for (const node of content.contents().toArray()) {
+    const element = $(node);
+    const type = element.prop("tagName")?.toLowerCase();
+    const raw = element.toString();
 
     if (type === "img") {
-      nodes.push({ type, raw, src: decodeHtml(matchFirst(raw, /\bsrc=["']([^"']+)["']/i)) });
+      nodes.push({ type, raw, src: element.attr("src") ?? "" });
     } else if (type === "br") {
       nodes.push({ type, raw });
     } else if (type === "p" || type === "center") {
-      nodes.push({ type, raw, text: cleanText(raw) });
+      nodes.push({ type, raw, text: normalizeDomText(element.text()) });
     }
   }
 
@@ -122,11 +103,6 @@ function extractTextLines(nodes: ContentNode[]): string[] {
   return lines;
 }
 
-function extractNextLinkLabel(html: string): string {
-  const footlinkHtml = matchFirst(html, /<div\b[^>]*id=["']footlink["'][^>]*>([\s\S]*?)<\/div>/i);
-  return cleanText(matchFirst(footlinkHtml, /<a\b[^>]*class=["'][^"']*\bnextlink\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/i));
-}
-
 function appendText(lines: string[], value: string): void {
   const text = value.trim();
   if (text) {
@@ -142,4 +118,8 @@ function appendBlank(lines: string[]): void {
 
 function isDegradedReaderPage(html: string): boolean {
   return html.includes("內容加載失敗") || html.includes("暫不支持電腦端閱讀");
+}
+
+function normalizeDomText(value: string): string {
+  return value.replace(/\u00a0/g, " ").replace(/[ \t\r\n]+/g, " ").trim();
 }

@@ -50,6 +50,29 @@ test("extractCatalogChapters reads chapter links in catalog order", async () => 
   ]);
 });
 
+test("extractCatalogChapters tolerates nested markup inside a catalog item", () => {
+  const html = `
+    <ul>
+      <li class="chapter-li jsChapter">
+        <div><ul><li>nested marker</li></ul></div>
+        <a href="/novel/2013/999.html" class="chapter-li-a">
+          <span class="chapter-index">番外 <em>短篇</em></span>
+        </a>
+      </li>
+    </ul>
+  `;
+
+  assert.deepEqual(
+    extractCatalogChapters(html, "https://tw.linovelib.com/novel/2013/catalog"),
+    [
+      {
+        title: "番外 短篇",
+        url: "https://tw.linovelib.com/novel/2013/999.html",
+      },
+    ],
+  );
+});
+
 test("parseChapterPage rejects degraded reader HTML", async () => {
   const html = await readFixture("72034-inprivate.html");
 
