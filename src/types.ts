@@ -60,6 +60,7 @@ export interface WalkPagesOptions {
 export interface DownloadBookInput {
   bookId: string;
   maxPages?: number;
+  requestIntervalMs?: number;
 }
 
 export interface DownloadChapterInput extends DownloadBookInput {

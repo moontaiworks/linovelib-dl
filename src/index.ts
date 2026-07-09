@@ -1,5 +1,5 @@
 import { buildCatalogUrl, buildChapterUrl, extractCatalogChapters } from "./catalog.js";
-import { fetchLinovelHtml } from "./http.js";
+import { createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
 import { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 import {
   DownloadBookInput,
@@ -10,7 +10,7 @@ import {
 
 export { buildCatalogUrl, buildChapterUrl, extractCatalogChapters } from "./catalog.js";
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
-export { createLinovelHeaders, fetchLinovelHtml } from "./http.js";
+export { createLinovelHeaders, createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
 export { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 export { parseChapterPage } from "./page.js";
 export type {
@@ -28,7 +28,7 @@ export async function downloadBook(
   input: DownloadBookInput,
   deps: Partial<LinovelDeps> = {},
 ): Promise<DownloadResult> {
-  const fetchHtml = deps.fetchHtml ?? fetchLinovelHtml;
+  const fetchHtml = resolveFetchHtml(input, deps);
   const catalogUrl = buildCatalogUrl(input.bookId);
   const catalogHtml = await fetchHtml(catalogUrl);
   const chapters = extractCatalogChapters(catalogHtml, catalogUrl);
@@ -47,7 +47,7 @@ export async function downloadChapter(
   input: DownloadChapterInput,
   deps: Partial<LinovelDeps> = {},
 ): Promise<DownloadResult> {
-  const fetchHtml = deps.fetchHtml ?? fetchLinovelHtml;
+  const fetchHtml = resolveFetchHtml(input, deps);
   const startUrl = buildChapterUrl(input.bookId, input.chapterId);
 
   return collectPages(input.bookId, startUrl, {
@@ -69,4 +69,17 @@ async function collectPages(
   }
 
   return { bookId, pages };
+}
+
+function resolveFetchHtml(
+  input: DownloadBookInput,
+  deps: Partial<LinovelDeps>,
+): LinovelDeps["fetchHtml"] {
+  if (deps.fetchHtml) {
+    return deps.fetchHtml;
+  }
+
+  return createThrottledFetchHtml(fetchLinovelHtml, {
+    intervalMs: input.requestIntervalMs ?? 250,
+  });
 }

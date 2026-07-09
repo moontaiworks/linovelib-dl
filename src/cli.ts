@@ -15,13 +15,15 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
         bookId: options.bookId,
         chapterId: options.chapterId,
         maxPages: options.maxPages,
+        requestIntervalMs: options.requestIntervalMs,
       })
     : await downloadBook({
         bookId: options.bookId,
         maxPages: options.maxPages,
+        requestIntervalMs: options.requestIntervalMs,
       });
 
-  process.stdout.write(`${JSON.stringify(result, null)}\n`);
+  process.stdout.write(`${JSON.stringify(result, null, 0)}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

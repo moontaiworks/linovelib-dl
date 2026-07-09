@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  createThrottledFetchHtml,
   formatCliHelp,
   parseCliOptions,
   createLinovelHeaders,
@@ -36,30 +37,66 @@ test("parseCliOptions accepts book and chapter download options", () => {
       "72034",
       "--max-pages",
       "2",
-      "--pretty",
+      "--request-interval-ms",
+      "500",
     ]),
     {
       command: "download",
       bookId: "2013",
       chapterId: "72034",
       maxPages: 2,
-      pretty: true,
+      requestIntervalMs: 500,
     },
   );
 
-  assert.deepEqual(parseCliOptions(["-b", "2013", "-m", "1"]), {
+  assert.deepEqual(parseCliOptions(["-b", "2013", "--max-pages", "1"]), {
     command: "download",
     bookId: "2013",
     maxPages: 1,
-    pretty: false,
+    requestIntervalMs: 250,
   });
 });
 
 test("parseCliOptions handles help and validates required book id", () => {
   assert.deepEqual(parseCliOptions(["--help"]), { command: "help" });
   assert.match(formatCliHelp(), /--book-id/);
+  assert.match(formatCliHelp(), /--request-interval-ms/);
   assert.throws(() => parseCliOptions([]), /Missing required option: --book-id/);
   assert.throws(() => parseCliOptions(["--book-id", "2013", "--max-pages", "0"]), /positive integer/);
+  assert.throws(
+    () => parseCliOptions(["--book-id", "2013", "--request-interval-ms", "-1"]),
+    /non-negative integer/,
+  );
+});
+
+test("createThrottledFetchHtml waits between sequential requests", async () => {
+  const calls = [];
+  const waits = [];
+  let now = 1000;
+  const fetchHtml = async (url) => {
+    calls.push({ url, at: now });
+    return url;
+  };
+  const throttled = createThrottledFetchHtml(fetchHtml, {
+    intervalMs: 250,
+    now: () => now,
+    sleep: async (ms) => {
+      waits.push(ms);
+      now += ms;
+    },
+  });
+
+  assert.equal(await throttled("first"), "first");
+  assert.equal(await throttled("second"), "second");
+  now += 300;
+  assert.equal(await throttled("third"), "third");
+
+  assert.deepEqual(waits, [250]);
+  assert.deepEqual(calls, [
+    { url: "first", at: 1000 },
+    { url: "second", at: 1250 },
+    { url: "third", at: 1550 },
+  ]);
 });
 
 test("extractCatalogChapters reads chapter links in catalog order", async () => {
