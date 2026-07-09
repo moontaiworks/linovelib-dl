@@ -1,10 +1,10 @@
 {
-  "name": "linovel-dl",
+  "name": "linovellib-dl",
   "version": "0.0.0",
   "type": "module",
   "private": true,
   "bin": {
-    "linovel-dl": "./dist/cli.js"
+    "linovellib-dl": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

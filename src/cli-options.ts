@@ -81,7 +81,7 @@ export function parseCliOptions(args: string[]): CliOptions {
 export function formatCliHelp(): string {
   return [
     "Usage:",
-    "  linovel-dl --book-id <bookId> [options]",
+    "  linovellib-dl --book-id <bookId> [options]",
     "",
     "Options:",
     "  -b, --book-id <bookId>        Download a whole book from its catalog",
@@ -94,9 +94,9 @@ export function formatCliHelp(): string {
     "  -h, --help                    Show this help",
     "",
     "Examples:",
-    "  linovel-dl --book-id 2013 --max-pages 3",
-    "  linovel-dl --book-id 2013 --chapter-id 72034 --request-interval-ms 500",
-    "  linovel-dl --book-id 2013 --volume-id 72033 --format epub --output books",
+    "  linovellib-dl --book-id 2013 --max-pages 3",
+    "  linovellib-dl --book-id 2013 --chapter-id 72034 --request-interval-ms 500",
+    "  linovellib-dl --book-id 2013 --volume-id 72033 --format epub --output books",
   ].join("\n");
 }
 
