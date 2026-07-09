@@ -13,7 +13,8 @@ export function parseChapterPage(html: string, pageUrl: string): ChapterPage {
   const readParams = parseReadParams($);
   const nodes = parseContentNodes($);
   const restoredNodes = restoreParagraphOrder(nodes, readParams.chapterid);
-  const lines = extractTextLines(restoredNodes);
+  const content = absolutizeContentUrls(restoredNodes, pageUrl);
+  const lines = extractTextLines(content);
 
   return {
     url: pageUrl,
@@ -24,6 +25,7 @@ export function parseChapterPage(html: string, pageUrl: string): ChapterPage {
     nextUrl: readParams.url_next ? absolutizeUrl(readParams.url_next, pageUrl) : null,
     indexUrl: readParams.url_index ? absolutizeUrl(readParams.url_index, pageUrl) : null,
     nextLinkLabel: normalizeDomText($("#footlink .nextlink").first().text()),
+    content,
     lines,
     text: lines.join("\n").trim(),
   };
@@ -68,7 +70,7 @@ function parseContentNodes($: cheerio.CheerioAPI): ContentNode[] {
     const raw = element.toString();
 
     if (type === "img") {
-      nodes.push({ type, raw, src: element.attr("src") ?? "" });
+      nodes.push({ type, raw, src: element.attr("data-src") ?? element.attr("src") ?? "" });
     } else if (type === "br") {
       nodes.push({ type, raw });
     } else if (type === "p" || type === "center") {
@@ -77,6 +79,19 @@ function parseContentNodes($: cheerio.CheerioAPI): ContentNode[] {
   }
 
   return nodes;
+}
+
+function absolutizeContentUrls(nodes: ContentNode[], pageUrl: string): ContentNode[] {
+  return nodes.map((node) => {
+    if (node.type !== "img" || !node.src) {
+      return node;
+    }
+
+    return {
+      ...node,
+      src: absolutizeUrl(node.src, pageUrl),
+    };
+  });
 }
 
 function extractTextLines(nodes: ContentNode[]): string[] {

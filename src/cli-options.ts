@@ -15,7 +15,10 @@ export type CliOptions =
 
 export function parseCliOptions(args: string[]): CliOptions {
   const parsed = parseArgs({
-    args: normalizeOptionValues(args, new Set(["--max-pages", "--request-interval-ms"])),
+    args: normalizeOptionValues(
+      args,
+      new Set(["--max-pages", "--request-interval-ms"]),
+    ),
     allowPositionals: false,
     options: {
       "book-id": { type: "string", short: "b" },
@@ -43,7 +46,9 @@ export function parseCliOptions(args: string[]): CliOptions {
     bookId,
     format: parseFormat(parsed.values.format),
     maxPages: parseMaxPages(parsed.values["max-pages"]),
-    requestIntervalMs: parseRequestIntervalMs(parsed.values["request-interval-ms"]),
+    requestIntervalMs: parseRequestIntervalMs(
+      parsed.values["request-interval-ms"],
+    ),
   };
 
   if (parsed.values["chapter-id"]) {
@@ -133,7 +138,10 @@ function parseRequestIntervalMs(value: string | undefined): number {
   return intervalMs;
 }
 
-function normalizeOptionValues(args: string[], optionNames: Set<string>): string[] {
+function normalizeOptionValues(
+  args: string[],
+  optionNames: Set<string>,
+): string[] {
   const normalized: string[] = [];
 
   for (let index = 0; index < args.length; index++) {

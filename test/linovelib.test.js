@@ -5,8 +5,10 @@ import test from "node:test";
 import {
   createThrottledFetchHtml,
   createVolumeEpubFiles,
+  downloadEpubImageAssets,
   formatCliHelp,
   parseCliOptions,
+  createLinovelImageHeaders,
   createLinovelHeaders,
   downloadBook,
   downloadCatalogVolumes,
@@ -28,6 +30,19 @@ test("createLinovelHeaders sends the reading-state cookie needed for full HTML",
   });
   assert.deepEqual(createLinovelHeaders({ cookie: "night=1" }), {
     cookie: "night=1",
+  });
+});
+
+test("createLinovelImageHeaders sends the referer needed by readpai images", () => {
+  assert.deepEqual(createLinovelImageHeaders(), {
+    Referer: "https://tw.linovelib.com/",
+  });
+  assert.deepEqual(createLinovelImageHeaders({ Accept: "image/avif,image/webp,*/*" }), {
+    Accept: "image/avif,image/webp,*/*",
+    Referer: "https://tw.linovelib.com/",
+  });
+  assert.deepEqual(createLinovelImageHeaders({ referer: "https://example.test/" }), {
+    referer: "https://example.test/",
   });
 });
 
@@ -242,6 +257,19 @@ test("parseChapterPage restores obfuscated paragraphs and extracts text", async 
   assert.equal(page.text.trim(), expected);
 });
 
+test("parseChapterPage extracts lazy-loaded illustration image URLs", async () => {
+  const page = parseChapterPage(
+    await readFixture("122012.html"),
+    "https://tw.linovelib.com/novel/2013/122012.html",
+  );
+
+  const firstImage = page.content.find((node) => node.type === "img");
+
+  assert.ok(page.lines.includes("https://img3.readpai.com/2/2013/122012/163854.jpg"));
+  assert.equal(firstImage?.src, "https://img3.readpai.com/2/2013/122012/163854.jpg");
+  assert.ok(!page.lines.includes("https://tw.linovelib.com/images/sloading.svg"));
+});
+
 test("parseChapterPage accepts compact live ReadParams without a semicolon", async () => {
   const html = (await readFixture("72034_2.html"))
     .replace("var ReadParams = {", "var ReadParams={")
@@ -396,4 +424,67 @@ test("createVolumeEpubFiles renders a valid EPUB file set for a volume", async (
   assert.match(byPath.get("OEBPS/nav.xhtml").content, /序章/);
   assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /序章/);
   assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /本人現年三十四歲/);
+});
+
+test("createVolumeEpubFiles embeds downloaded illustration assets", async () => {
+  const page = parseChapterPage(
+    await readFixture("122012.html"),
+    "https://tw.linovelib.com/novel/2013/122012.html",
+  );
+
+  const files = createVolumeEpubFiles({
+    bookId: "2013",
+    title: "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
+    identifier: "linovelib-2013-72033",
+    chapters: [
+      {
+        title: "插圖",
+        pages: [page],
+      },
+    ],
+    imageAssets: [
+      {
+        sourceUrl: "https://img3.readpai.com/2/2013/122012/163854.jpg",
+        mediaType: "image/jpeg",
+        content: Buffer.from("fake-image"),
+      },
+    ],
+  });
+
+  const byPath = new Map(files.map((file) => [file.path, file]));
+  assert.deepEqual(byPath.get("OEBPS/images/image-001.jpg").content, Buffer.from("fake-image"));
+  assert.match(byPath.get("OEBPS/content.opf").content, /media-type="image\/jpeg"/);
+  assert.match(
+    byPath.get("OEBPS/chapters/chapter-001.xhtml").content,
+    /<img src="\.\.\/images\/image-001\.jpg" alt="https:\/\/img3\.readpai\.com\/2\/2013\/122012\/163854\.jpg"\/>/,
+  );
+});
+
+test("downloadEpubImageAssets downloads unique images from chapter content", async () => {
+  const page = parseChapterPage(
+    await readFixture("122012.html"),
+    "https://tw.linovelib.com/novel/2013/122012.html",
+  );
+  const fetched = [];
+
+  const assets = await downloadEpubImageAssets(
+    [
+      {
+        title: "插圖",
+        pages: [page, page],
+      },
+    ],
+    async (url) => {
+      fetched.push(url);
+      return {
+        content: Buffer.from(url),
+        mediaType: "image/jpeg",
+      };
+    },
+  );
+
+  assert.equal(fetched[0], "https://img3.readpai.com/2/2013/122012/163854.jpg");
+  assert.equal(fetched.length, new Set(fetched).size);
+  assert.equal(assets[0].sourceUrl, "https://img3.readpai.com/2/2013/122012/163854.jpg");
+  assert.deepEqual(assets[0].content, Buffer.from("https://img3.readpai.com/2/2013/122012/163854.jpg"));
 });

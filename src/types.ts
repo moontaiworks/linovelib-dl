@@ -61,6 +61,7 @@ export interface ChapterPage {
   nextUrl: string | null;
   indexUrl: string | null;
   nextLinkLabel: string;
+  content: ContentNode[];
   lines: string[];
   text: string;
 }

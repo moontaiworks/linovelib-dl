@@ -23,8 +23,15 @@ export {
   extractCatalogVolumes,
 } from "./catalog.js";
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
-export { createVolumeEpubFiles, writeEpubFile } from "./epub.js";
-export { createLinovelHeaders, createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
+export { createVolumeEpubFiles, downloadEpubImageAssets, writeEpubFile } from "./epub.js";
+export {
+  createLinovelImageHeaders,
+  createLinovelHeaders,
+  createThrottledFetchBinary,
+  createThrottledFetchHtml,
+  fetchLinovelBinary,
+  fetchLinovelHtml,
+} from "./http.js";
 export { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
 export { parseChapterPage } from "./page.js";
 export type {
@@ -42,7 +49,13 @@ export type {
   ReadParams,
   VolumeChapterResult,
 } from "./types.js";
-export type { CreateVolumeEpubFilesInput, EpubChapterInput, EpubFile } from "./epub.js";
+export type {
+  CreateVolumeEpubFilesInput,
+  EpubChapterInput,
+  EpubFile,
+  EpubImageAsset,
+  FetchEpubImage,
+} from "./epub.js";
 
 export async function downloadBook(
   input: DownloadBookInput,
