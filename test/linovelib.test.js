@@ -178,15 +178,16 @@ test("parseCliOptions handles help and validates required book id", () => {
 test("formatEpubFileName prefixes the volume title with Linovelib ids", () => {
   assert.equal(
     formatEpubFileName(
+      1,
       "2013",
       "72288",
       "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
     ),
-    "2013-72288 無職轉生 ～到了異世界就拿出真本事～ 1 幼年期.epub",
+    "001 無職轉生 ～到了異世界就拿出真本事～ 1 幼年期 2013-72288.epub",
   );
   assert.equal(
-    formatEpubFileName("2013", "72288", 'A<B>:"C"'),
-    "2013-72288 A_B___C_.epub",
+    formatEpubFileName(12, "2013", "72288", 'A<B>:"C"'),
+    "012 A_B___C_ 2013-72288.epub",
   );
 });
 

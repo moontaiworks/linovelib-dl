@@ -52,6 +52,7 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
         imageAssets,
       });
       const fileName = formatEpubFileName(
+        written.length + 1,
         options.bookId,
         result.volume.volumeId,
         result.volume.title,
@@ -89,11 +90,12 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
 }
 
 export function formatEpubFileName(
+  index: number,
   bookId: string,
   volumeId: string,
   title: string,
 ): string {
-  return `${bookId}-${volumeId} ${safeFileName(title)}.epub`;
+  return `${String(index).padStart(3, "0")} ${safeFileName(title)} ${bookId}-${volumeId}.epub`;
 }
 
 function safeFileName(value: string): string {
