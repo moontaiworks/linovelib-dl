@@ -11,7 +11,9 @@ export interface FetchBinaryResult {
   mediaType?: string;
 }
 
-export function createLinovelHeaders(headers: Record<string, string> = {}): Record<string, string> {
+export function createLinovelHeaders(
+  headers: Record<string, string> = {},
+): Record<string, string> {
   const cookieKey = findHeaderKey(headers, "cookie") ?? "cookie";
   const cookie = headers[cookieKey];
 
@@ -47,6 +49,7 @@ export async function fetchLinovelHtml(
     ...requestOptions,
     headers: createLinovelHeaders(headers),
   });
+  console.debug(`Fetched HTML with ${response.status} from ${url}`);
 
   if (!response.ok) {
     throw new Error(`failed to fetch ${url}: HTTP ${response.status}`);
@@ -70,6 +73,8 @@ export async function fetchLinovelBinary(
   }
 
   const mediaType = response.headers.get("content-type") ?? undefined;
+  console.debug(`Fetched ${mediaType} from ${url}`);
+
   return {
     content: Buffer.from(await response.arrayBuffer()),
     mediaType,
@@ -116,9 +121,14 @@ function createThrottledFetch<T>(
   };
 }
 
-function findHeaderKey(headers: Record<string, string>, wantedKey: string): string | undefined {
+function findHeaderKey(
+  headers: Record<string, string>,
+  wantedKey: string,
+): string | undefined {
   const lowerWantedKey = wantedKey.toLowerCase();
-  return Object.keys(headers).find((key) => key.toLowerCase() === lowerWantedKey);
+  return Object.keys(headers).find(
+    (key) => key.toLowerCase() === lowerWantedKey,
+  );
 }
 
 function hasCookie(cookieHeader: string | undefined, name: string): boolean {
@@ -128,7 +138,9 @@ function hasCookie(cookieHeader: string | undefined, name: string): boolean {
 
   return cookieHeader
     .split(";")
-    .some((cookie) => cookie.trim().toLowerCase().startsWith(`${name.toLowerCase()}=`));
+    .some((cookie) =>
+      cookie.trim().toLowerCase().startsWith(`${name.toLowerCase()}=`),
+    );
 }
 
 function defaultSleep(ms: number): Promise<void> {
