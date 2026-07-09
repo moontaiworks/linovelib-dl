@@ -81,6 +81,27 @@ test("parseCliOptions accepts book and chapter download options", () => {
     parseCliOptions([
       "-b",
       "2013",
+      "--start-volume-id",
+      "72048",
+      "--format",
+      "epub",
+      "--output",
+      "books",
+    ]),
+    {
+      command: "download",
+      bookId: "2013",
+      startVolumeId: "72048",
+      format: "epub",
+      output: "books",
+      requestIntervalMs: 250,
+    },
+  );
+
+  assert.deepEqual(
+    parseCliOptions([
+      "-b",
+      "2013",
       "--volume-id",
       "72033",
       "--format",
@@ -114,6 +135,7 @@ test("parseCliOptions handles help and validates required book id", () => {
   assert.deepEqual(parseCliOptions(["--help"]), { command: "help" });
   assert.match(formatCliHelp(), /--book-id/);
   assert.match(formatCliHelp(), /--format/);
+  assert.match(formatCliHelp(), /--start-volume-id/);
   assert.match(formatCliHelp(), /--request-interval-ms/);
   assert.throws(
     () => parseCliOptions([]),
@@ -130,6 +152,26 @@ test("parseCliOptions handles help and validates required book id", () => {
   assert.throws(
     () => parseCliOptions(["--book-id", "2013", "--request-interval-ms", "-1"]),
     /non-negative integer/,
+  );
+  assert.throws(
+    () => parseCliOptions(["--book-id", "2013", "--start-volume-id", "72048"]),
+    /--start-volume-id can only be used with --format epub/,
+  );
+  assert.throws(
+    () =>
+      parseCliOptions([
+        "--book-id",
+        "2013",
+        "--volume-id",
+        "72033",
+        "--start-volume-id",
+        "72048",
+        "--format",
+        "epub",
+        "--output",
+        "books",
+      ]),
+    /--start-volume-id cannot be used with --volume-id/,
   );
 });
 
@@ -388,6 +430,49 @@ test("streamCatalogVolumes yields the first completed volume before fetching the
     "https://tw.linovelib.com/novel/2013/catalog",
     "https://tw.linovelib.com/novel/2013/72034.html",
     "https://tw.linovelib.com/novel/2013/72034_2.html",
+  ]);
+});
+
+test("streamCatalogVolumes starts from the requested volume id", async () => {
+  const catalogHtml = `
+    <div class="catalog-volume">
+      <ul class="volume-chapters">
+        <li class="chapter-bar chapter-li"><a href="/novel/2013/vol_72033.html"><h3>第一卷</h3></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72034.html"><span class="chapter-index">序章</span></a></li>
+      </ul>
+    </div>
+    <div class="catalog-volume">
+      <ul class="volume-chapters">
+        <li class="chapter-bar chapter-li"><a href="/novel/2013/vol_72048.html"><h3>第二卷</h3></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72035.html"><span class="chapter-index">第一話</span></a></li>
+      </ul>
+    </div>
+  `;
+  const fetched = [];
+  const seenVolumes = [];
+
+  for await (const result of streamCatalogVolumes(
+    { bookId: "2013", startVolumeId: "72048", maxPages: 1 },
+    {
+      fetchHtml: async (url) => {
+        fetched.push(url);
+        if (url === "https://tw.linovelib.com/novel/2013/catalog") {
+          return catalogHtml;
+        }
+        if (url === "https://tw.linovelib.com/novel/2013/72035.html") {
+          return readFixture("72035.html");
+        }
+        throw new Error(`unexpected url: ${url}`);
+      },
+    },
+  )) {
+    seenVolumes.push(result.volume.volumeId);
+  }
+
+  assert.deepEqual(seenVolumes, ["72048"]);
+  assert.deepEqual(fetched, [
+    "https://tw.linovelib.com/novel/2013/catalog",
+    "https://tw.linovelib.com/novel/2013/72035.html",
   ]);
 });
 

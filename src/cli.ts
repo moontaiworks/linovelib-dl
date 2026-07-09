@@ -34,6 +34,7 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
     for await (const result of streamCatalogVolumes({
       bookId: options.bookId,
       volumeId: options.volumeId,
+      startVolumeId: options.startVolumeId,
       maxPages: options.maxPages,
       requestIntervalMs: options.requestIntervalMs,
     })) {

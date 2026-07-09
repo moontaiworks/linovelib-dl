@@ -117,15 +117,15 @@ export async function* streamCatalogVolumes(
   const catalogUrl = buildCatalogUrl(input.bookId);
   const catalogHtml = await fetchHtml(catalogUrl);
   const volumes = extractCatalogVolumes(catalogHtml, catalogUrl);
-  const selectedVolumes = input.volumeId
-    ? volumes.filter((volume) => volume.volumeId === input.volumeId)
-    : volumes;
+  const selectedVolumes = selectCatalogVolumes(volumes, input);
 
   if (selectedVolumes.length === 0) {
     throw new Error(
       input.volumeId
         ? `catalog has no volume ${input.volumeId}: ${catalogUrl}`
-        : `catalog has no volumes: ${catalogUrl}`,
+        : input.startVolumeId
+          ? `catalog has no start volume ${input.startVolumeId}: ${catalogUrl}`
+          : `catalog has no volumes: ${catalogUrl}`,
     );
   }
 
@@ -136,6 +136,29 @@ export async function* streamCatalogVolumes(
       maxPages: input.maxPages,
     });
   }
+}
+
+function selectCatalogVolumes(
+  volumes: DownloadVolumeResult["volume"][],
+  input: DownloadVolumeInput,
+): DownloadVolumeResult["volume"][] {
+  if (input.volumeId) {
+    return volumes.filter((volume) => volume.volumeId === input.volumeId);
+  }
+
+  if (!input.startVolumeId) {
+    return volumes;
+  }
+
+  const startIndex = volumes.findIndex(
+    (volume) => volume.volumeId === input.startVolumeId,
+  );
+
+  if (startIndex < 0) {
+    return [];
+  }
+
+  return volumes.slice(startIndex);
 }
 
 async function collectPages(

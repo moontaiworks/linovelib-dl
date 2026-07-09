@@ -86,6 +86,7 @@ export interface DownloadBookInput {
 
 export interface DownloadVolumeInput extends DownloadBookInput {
   volumeId?: string;
+  startVolumeId?: string;
 }
 
 export interface DownloadChapterInput extends DownloadBookInput {

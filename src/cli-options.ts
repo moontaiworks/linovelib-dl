@@ -7,6 +7,7 @@ export type CliOptions =
       bookId: string;
       chapterId?: string;
       volumeId?: string;
+      startVolumeId?: string;
       format: "json" | "epub";
       output?: string;
       maxPages?: number;
@@ -24,6 +25,7 @@ export function parseCliOptions(args: string[]): CliOptions {
       "book-id": { type: "string", short: "b" },
       "chapter-id": { type: "string", short: "c" },
       "volume-id": { type: "string" },
+      "start-volume-id": { type: "string" },
       format: { type: "string" },
       output: { type: "string", short: "o" },
       "max-pages": { type: "string" },
@@ -59,6 +61,10 @@ export function parseCliOptions(args: string[]): CliOptions {
     options.volumeId = parsed.values["volume-id"];
   }
 
+  if (parsed.values["start-volume-id"]) {
+    options.startVolumeId = parsed.values["start-volume-id"];
+  }
+
   if (parsed.values.output) {
     options.output = parsed.values.output;
   }
@@ -69,6 +75,14 @@ export function parseCliOptions(args: string[]): CliOptions {
 
   if (options.format === "epub" && !options.output) {
     throw new Error("--output is required when --format epub");
+  }
+
+  if (options.startVolumeId && options.format !== "epub") {
+    throw new Error("--start-volume-id can only be used with --format epub");
+  }
+
+  if (options.startVolumeId && options.volumeId) {
+    throw new Error("--start-volume-id cannot be used with --volume-id");
   }
 
   if (options.maxPages === undefined) {
@@ -87,6 +101,7 @@ export function formatCliHelp(): string {
     "  -b, --book-id <bookId>        Download a whole book from its catalog",
     "  -c, --chapter-id <chapterId>  Start from a specific chapter id",
     "      --volume-id <volumeId>    Limit EPUB output to one catalog volume",
+    "      --start-volume-id <id>    Start EPUB output from this catalog volume id",
     "      --format <json|epub>      Output format (default: json)",
     "  -o, --output <dir>            Output directory for EPUB files",
     "      --max-pages <count>       Stop after count pages, useful for testing",
@@ -97,6 +112,7 @@ export function formatCliHelp(): string {
     "  linovellib-dl --book-id 2013 --max-pages 3",
     "  linovellib-dl --book-id 2013 --chapter-id 72034 --request-interval-ms 500",
     "  linovellib-dl --book-id 2013 --volume-id 72033 --format epub --output books",
+    "  linovellib-dl --book-id 2013 --start-volume-id 72048 --format epub --output books",
   ].join("\n");
 }
 
