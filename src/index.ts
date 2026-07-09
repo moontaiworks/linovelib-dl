@@ -3,6 +3,7 @@ import {
   buildChapterUrl,
   extractCatalogChapters,
   extractCatalogVolumes,
+  extractVolumePageChapters,
 } from "./catalog.js";
 import { createThrottledFetchHtml, fetchLinovelHtml } from "./http.js";
 import { walkPagesFrom, shouldContinueChapter } from "./navigation.js";
@@ -21,6 +22,7 @@ export {
   buildChapterUrl,
   extractCatalogChapters,
   extractCatalogVolumes,
+  extractVolumePageChapters,
 } from "./catalog.js";
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
 export { createVolumeEpubFiles, downloadEpubImageAssets, writeEpubFile } from "./epub.js";
@@ -111,6 +113,14 @@ export async function downloadCatalogVolumes(
   }
 
   for (const volume of selectedVolumes) {
+    if (volume.chapters.some((chapter) => chapter.kind === "unresolved")) {
+      const volumeHtml = await fetchHtml(volume.url);
+      const volumePageChapters = extractVolumePageChapters(volumeHtml, volume.url);
+      if (volumePageChapters.length > 0) {
+        volume.chapters = volumePageChapters;
+      }
+    }
+
     const unresolved = volume.chapters.filter((chapter) => chapter.kind === "unresolved");
     if (unresolved.length > 0) {
       throw new Error(

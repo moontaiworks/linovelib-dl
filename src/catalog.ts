@@ -3,6 +3,7 @@ import { absolutizeUrl } from "./html.js";
 import {
   CatalogChapter,
   CatalogVolume,
+  CatalogVolumeChapter,
   DEFAULT_BASE_URL,
 } from "./types.js";
 
@@ -73,37 +74,30 @@ export function extractCatalogVolumes(html: string, catalogUrl: string): Catalog
     }
 
     volume.find(".jsChapter").each((_, chapterElement) => {
-      const item = $(chapterElement);
-      const link = item.children("a").first();
-      const chapterHref = link.attr("href");
-
-      if (!chapterHref) {
-        return;
+      const chapter = extractCatalogVolumeChapter($, chapterElement, catalogUrl);
+      if (chapter) {
+        catalogVolume.chapters.push(chapter);
       }
-
-      const titleNode = link.find(".chapter-index").first();
-      const title = normalizeDomText(titleNode.length > 0 ? titleNode.text() : link.text());
-
-      if (isResolvableCatalogHref(chapterHref)) {
-        catalogVolume.chapters.push({
-          kind: "resolved",
-          title,
-          url: absolutizeUrl(chapterHref, catalogUrl),
-        });
-        return;
-      }
-
-      catalogVolume.chapters.push({
-        kind: "unresolved",
-        title,
-        rawHref: chapterHref,
-      });
     });
 
     volumes.push(catalogVolume);
   });
 
   return volumes;
+}
+
+export function extractVolumePageChapters(html: string, volumeUrl: string): CatalogVolumeChapter[] {
+  const $ = cheerio.load(html);
+  const chapters: CatalogVolumeChapter[] = [];
+
+  $(".jsChapter").each((_, chapterElement) => {
+    const chapter = extractCatalogVolumeChapter($, chapterElement, volumeUrl);
+    if (chapter) {
+      chapters.push(chapter);
+    }
+  });
+
+  return chapters;
 }
 
 function extractVolumeId(url: string): string {
@@ -116,4 +110,35 @@ function isResolvableCatalogHref(href: string): boolean {
 
 function normalizeDomText(value: string): string {
   return value.replace(/\u00a0/g, " ").replace(/[ \t\r\n]+/g, " ").trim();
+}
+
+function extractCatalogVolumeChapter(
+  $: cheerio.CheerioAPI,
+  chapterElement: Parameters<cheerio.CheerioAPI>[0],
+  baseUrl: string,
+): CatalogVolumeChapter | null {
+  const item = $(chapterElement);
+  const link = item.children("a").first();
+  const chapterHref = link.attr("href");
+
+  if (!chapterHref) {
+    return null;
+  }
+
+  const titleNode = link.find(".chapter-index, .chapter-title").first();
+  const title = normalizeDomText(titleNode.length > 0 ? titleNode.text() : link.text());
+
+  if (isResolvableCatalogHref(chapterHref)) {
+    return {
+      kind: "resolved",
+      title,
+      url: absolutizeUrl(chapterHref, baseUrl),
+    };
+  }
+
+  return {
+    kind: "unresolved",
+    title,
+    rawHref: chapterHref,
+  };
 }

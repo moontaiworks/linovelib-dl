@@ -13,6 +13,7 @@ import {
   downloadBook,
   downloadCatalogVolumes,
   downloadChapter,
+  extractVolumePageChapters,
   extractCatalogVolumes,
   extractCatalogChapters,
   parseChapterPage,
@@ -210,6 +211,85 @@ test("extractCatalogVolumes groups catalog chapters by physical volume", async (
   });
 });
 
+test("extractVolumePageChapters reads complete links from a volume page", () => {
+  const html = `
+    <div class="catalog-volume">
+      <ul class="module-content">
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72049.html"><span class="chapter-title">序章</span></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72050.html"><span class="chapter-title">第一話「大小姐的暴力」</span></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72051.html"><span class="chapter-title">第二話「自導自演」</span></a></li>
+      </ul>
+    </div>
+  `;
+
+  assert.deepEqual(
+    extractVolumePageChapters(html, "https://tw.linovelib.com/novel/2013/vol_72048.html"),
+    [
+      {
+        kind: "resolved",
+        title: "序章",
+        url: "https://tw.linovelib.com/novel/2013/72049.html",
+      },
+      {
+        kind: "resolved",
+        title: "第一話「大小姐的暴力」",
+        url: "https://tw.linovelib.com/novel/2013/72050.html",
+      },
+      {
+        kind: "resolved",
+        title: "第二話「自導自演」",
+        url: "https://tw.linovelib.com/novel/2013/72051.html",
+      },
+    ],
+  );
+});
+
+test("downloadCatalogVolumes resolves catalog placeholders from the volume page", async () => {
+  const catalogHtml = `
+    <div class="catalog-volume">
+      <ul class="volume-chapters">
+        <li class="chapter-bar chapter-li"><a href="/novel/2013/vol_72048.html">
+          <h3>無職轉生 ～到了異世界就拿出真本事～ 2 少年期 家庭教師篇</h3>
+        </a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72049.html"><span class="chapter-index">序章</span></a></li>
+        <li class="chapter-li jsChapter"><a href="javascript:cid(1)"><span class="chapter-index">第一話「大小姐的暴力」</span></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72051.html"><span class="chapter-index">第二話「自導自演」</span></a></li>
+      </ul>
+    </div>
+  `;
+  const volumeHtml = `
+    <div class="catalog-volume">
+      <ul class="module-content">
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72049.html"><span class="chapter-title">序章</span></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72050.html"><span class="chapter-title">第一話「大小姐的暴力」</span></a></li>
+        <li class="chapter-li jsChapter"><a href="/novel/2013/72051.html"><span class="chapter-title">第二話「自導自演」</span></a></li>
+      </ul>
+    </div>
+  `;
+  const chapterHtml = await readFixture("72034.html");
+  const fetched = [];
+
+  const result = await downloadCatalogVolumes(
+    { bookId: "2013", volumeId: "72048", maxPages: 1 },
+    {
+      fetchHtml: async (url) => {
+        fetched.push(url);
+        if (url === "https://tw.linovelib.com/novel/2013/catalog") {
+          return catalogHtml;
+        }
+        if (url === "https://tw.linovelib.com/novel/2013/vol_72048.html") {
+          return volumeHtml;
+        }
+        return chapterHtml;
+      },
+    },
+  );
+
+  assert.ok(fetched.includes("https://tw.linovelib.com/novel/2013/vol_72048.html"));
+  assert.equal(result[0].volume.chapters[1].kind, "resolved");
+  assert.equal(result[0].volume.chapters[1].url, "https://tw.linovelib.com/novel/2013/72050.html");
+});
+
 test("extractCatalogChapters tolerates nested markup inside a catalog item", () => {
   const html = `
     <ul>
@@ -380,7 +460,7 @@ test("downloadBook starts from catalog first chapter", async () => {
   );
 });
 
-test("downloadCatalogVolumes rejects volumes with unresolved catalog chapters", async () => {
+test("downloadCatalogVolumes rejects volumes that remain unresolved after checking the volume page", async () => {
   const catalogHtml = await readFixture("catalog.html");
 
   await assert.rejects(
@@ -388,10 +468,16 @@ test("downloadCatalogVolumes rejects volumes with unresolved catalog chapters", 
       downloadCatalogVolumes(
         { bookId: "2013", volumeId: "72048" },
         {
-          fetchHtml: async (url) => {
-            assert.equal(url, "https://tw.linovelib.com/novel/2013/catalog");
-            return catalogHtml;
-          },
+          fetchHtml: async (url) =>
+            url === "https://tw.linovelib.com/novel/2013/catalog"
+              ? catalogHtml
+              : `
+                <div class="catalog-volume">
+                  <ul class="module-content">
+                    <li class="chapter-li jsChapter"><a href="javascript:cid(1)"><span class="chapter-title">第一話「大小姐的暴力」</span></a></li>
+                  </ul>
+                </div>
+              `,
         },
       ),
     /volume 72048 has unresolved catalog chapters: 第一話「大小姐的暴力」 \(javascript:cid\(1\)\)/,
