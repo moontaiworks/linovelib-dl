@@ -1,10 +1,25 @@
 {
-  "name": "linovellib-dl",
+  "name": "@moontaiworks/linovelib-dl",
   "version": "0.0.0",
   "type": "module",
-  "private": true,
+  "publishConfig": {
+    "access": "public",
+    "tag": "latest",
+    "provenance": true
+  },
+  "files": [
+    "dist"
+  ],
+  "homepage": "https://moontaiworks.github.io/linovelib-dl/",
+  "bugs": {
+    "url": "https://github.com/moontaiworks/linovelib-dl/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moontaiworks/linovelib-dl.git"
+  },
   "bin": {
-    "linovellib-dl": "./dist/cli.js"
+    "linovelib-dl": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -12,7 +27,11 @@
     "test": "tsc -p tsconfig.json && node --test"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "^26.1.1",
+    "conventional-changelog-conventionalcommits": "^10.2.1",
+    "semantic-release": "^25.0.3",
     "typescript": "^5.8.3"
   },
   "dependencies": {
