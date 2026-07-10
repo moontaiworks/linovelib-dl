@@ -773,6 +773,11 @@ test("createVolumeEpubFiles renders a valid EPUB file set for a volume", async (
     bookId: "2013",
     title: "無職轉生 ～到了異世界就拿出真本事～ 1 幼年期",
     identifier: "linovelib-2013-72033",
+    coverAsset: {
+      sourceUrl: "https://img3.readpai.com/cover/2013/163854.jpg",
+      mediaType: "image/jpeg",
+      content: Buffer.from("fake-cover"),
+    },
     chapters: [
       {
         title: "序章",
@@ -786,6 +791,16 @@ test("createVolumeEpubFiles renders a valid EPUB file set for a volume", async (
   assert.equal(byPath.get("mimetype").compression, "store");
   assert.match(byPath.get("META-INF/container.xml").content, /content\.opf/);
   assert.match(byPath.get("OEBPS/content.opf").content, /linovelib-2013-72033/);
+  assert.deepEqual(
+    byPath.get("OEBPS/images/cover.jpg").content,
+    Buffer.from("fake-cover"),
+  );
+  assert.match(byPath.get("OEBPS/content.opf").content, /properties="cover-image"/);
+  assert.match(byPath.get("OEBPS/content.opf").content, /<itemref idref="cover"\/>/);
+  assert.match(
+    byPath.get("OEBPS/cover.xhtml").content,
+    /<img src="images\/cover\.jpg"/,
+  );
   assert.match(byPath.get("OEBPS/nav.xhtml").content, /序章/);
   assert.match(byPath.get("OEBPS/chapters/chapter-001.xhtml").content, /序章/);
   assert.match(

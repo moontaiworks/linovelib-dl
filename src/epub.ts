@@ -16,6 +16,7 @@ export interface CreateVolumeEpubFilesInput {
   author?: string;
   language?: string;
   chapters: EpubChapterInput[];
+  coverAsset?: EpubImageAsset;
   imageAssets?: EpubImageAsset[];
 }
 
@@ -45,12 +46,7 @@ export async function downloadEpubImageAssets(
 
   for (const url of urls) {
     try {
-      const result = await fetchImage(url);
-      assets.push({
-        sourceUrl: url,
-        mediaType: result.mediaType ?? inferMediaTypeFromUrl(url),
-        content: result.content,
-      });
+      assets.push(await downloadEpubImageAsset(url, fetchImage));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`Skipping image asset ${url}: ${message}`);
@@ -58,6 +54,18 @@ export async function downloadEpubImageAssets(
   }
 
   return assets;
+}
+
+export async function downloadEpubImageAsset(
+  url: string,
+  fetchImage: FetchEpubImage,
+): Promise<EpubImageAsset> {
+  const result = await fetchImage(url);
+  return {
+    sourceUrl: url,
+    mediaType: result.mediaType ?? inferMediaTypeFromUrl(url),
+    content: result.content,
+  };
 }
 
 export function createVolumeEpubFiles(
@@ -69,6 +77,7 @@ export function createVolumeEpubFiles(
     href: `chapters/chapter-${String(index + 1).padStart(3, "0")}.xhtml`,
   }));
   const images = createImageEntries(input.imageAssets ?? []);
+  const cover = input.coverAsset ? createCoverEntry(input.coverAsset) : undefined;
 
   return [
     {
@@ -82,8 +91,14 @@ export function createVolumeEpubFiles(
     },
     {
       path: "OEBPS/content.opf",
-      content: renderContentOpf(input, chapters, images),
+      content: renderContentOpf(input, chapters, images, cover),
     },
+    ...(cover
+      ? [{
+          path: "OEBPS/cover.xhtml",
+          content: renderCoverXhtml(input.title, cover),
+        }]
+      : []),
     {
       path: "OEBPS/nav.xhtml",
       content: renderNavXhtml(input.title, chapters),
@@ -105,6 +120,12 @@ export function createVolumeEpubFiles(
       path: `OEBPS/${image.href}`,
       content: image.content,
     })),
+    ...(cover
+      ? [{
+          path: `OEBPS/${cover.href}`,
+          content: cover.content,
+        }]
+      : []),
   ];
 }
 
@@ -146,6 +167,7 @@ function renderContentOpf(
   input: CreateVolumeEpubFilesInput,
   chapters: Array<EpubChapterInput & { id: string; href: string }>,
   images: EpubImageEntry[],
+  cover: EpubImageEntry | undefined,
 ): string {
   const language = input.language ?? "zh-TW";
   const author = input.author ?? "Linovelib";
@@ -166,9 +188,21 @@ function renderContentOpf(
         )}"/>`,
     )
     .join("\n");
-  const manifestItems = [chapterManifest, imageManifest]
+  const coverManifest = cover
+    ? `    <item id="${cover.id}" href="${xmlAttr(cover.href)}" media-type="${xmlAttr(
+        cover.mediaType,
+      )}" properties="cover-image"/>`
+    : "";
+  const manifestItems = [
+    cover ? `    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>` : "",
+    coverManifest,
+    chapterManifest,
+    imageManifest,
+  ]
     .filter(Boolean)
     .join("\n");
+  const coverMetadata = cover ? `    <meta name="cover" content="${cover.id}"/>\n` : "";
+  const coverSpineItem = cover ? `    <itemref idref="cover"/>\n` : "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="book-id" version="3.0">
@@ -177,7 +211,7 @@ function renderContentOpf(
     <dc:title>${xmlText(input.title)}</dc:title>
     <dc:creator>${xmlText(author)}</dc:creator>
     <dc:language>${xmlText(language)}</dc:language>
-    <meta property="dcterms:modified">2000-01-01T00:00:00Z</meta>
+${coverMetadata}    <meta property="dcterms:modified">2000-01-01T00:00:00Z</meta>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
@@ -185,9 +219,23 @@ function renderContentOpf(
 ${manifestItems}
   </manifest>
   <spine toc="toc">
-${spine}
+${coverSpineItem}${spine}
   </spine>
 </package>
+`;
+}
+
+function renderCoverXhtml(title: string, cover: EpubImageEntry): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-TW">
+  <head>
+    <title>${xmlText(title)}</title>
+  </head>
+  <body>
+    <img src="${xmlAttr(cover.href)}" alt="${xmlAttr(title)}"/>
+  </body>
+</html>
 `;
 }
 
@@ -349,6 +397,14 @@ function createImageEntries(assets: EpubImageAsset[]): EpubImageEntry[] {
       asset.sourceUrl,
     )}`,
   }));
+}
+
+function createCoverEntry(asset: EpubImageAsset): EpubImageEntry {
+  return {
+    ...asset,
+    id: "cover-image",
+    href: `images/cover${extensionForMediaType(asset.mediaType, asset.sourceUrl)}`,
+  };
 }
 
 function extensionForMediaType(mediaType: string, sourceUrl: string): string {

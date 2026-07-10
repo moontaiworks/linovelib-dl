@@ -4,6 +4,7 @@ import {
   createThrottledFetchBinary,
   createVolumeEpubFiles,
   downloadBook,
+  downloadEpubImageAsset,
   downloadEpubImageAssets,
   downloadChapter,
   fetchLinovelBinary,
@@ -43,12 +44,27 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
         title: chapter.title,
         pages: chapter.pages,
       }));
+      let coverAsset;
+      if (result.volume.coverUrl) {
+        try {
+          coverAsset = await downloadEpubImageAsset(
+            result.volume.coverUrl,
+            fetchImage,
+          );
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(
+            `Skipping cover image ${result.volume.coverUrl}: ${message}`,
+          );
+        }
+      }
       const imageAssets = await downloadEpubImageAssets(chapters, fetchImage);
       const files = createVolumeEpubFiles({
         bookId: options.bookId,
         title: result.volume.title,
         identifier,
         chapters,
+        coverAsset,
         imageAssets,
       });
       const fileName = formatEpubFileName(

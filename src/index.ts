@@ -27,6 +27,7 @@ export {
 export { formatCliHelp, parseCliOptions } from "./cli-options.js";
 export {
   createVolumeEpubFiles,
+  downloadEpubImageAsset,
   downloadEpubImageAssets,
   writeEpubFile,
 } from "./epub.js";
