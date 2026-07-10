@@ -35,6 +35,7 @@ export {
   createLinovelHeaders,
   createThrottledFetchBinary,
   createThrottledFetchHtml,
+  DEFAULT_RATE_LIMIT_WAIT_MS,
   fetchLinovelBinary,
   fetchLinovelHtml,
 } from "./http.js";

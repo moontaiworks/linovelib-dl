@@ -1,9 +1,13 @@
 const READER_COOKIE = "night=0";
 const IMAGE_REFERER = "https://tw.linovelib.com/";
+export const DEFAULT_RATE_LIMIT_WAIT_MS = 60_000;
 
 export interface FetchLinovelHtmlOptions extends RequestInit {
   fetchImpl?: typeof fetch;
   headers?: Record<string, string>;
+  rateLimitDefaultMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface FetchBinaryResult {
@@ -45,7 +49,7 @@ export async function fetchLinovelHtml(
   options: FetchLinovelHtmlOptions = {},
 ): Promise<string> {
   const { fetchImpl = fetch, headers, ...requestOptions } = options;
-  const response = await fetchImpl(url, {
+  const response = await fetchWithRateLimitRetry(url, fetchImpl, {
     ...requestOptions,
     headers: createLinovelHeaders(headers),
   });
@@ -63,7 +67,7 @@ export async function fetchLinovelBinary(
   options: FetchLinovelHtmlOptions = {},
 ): Promise<FetchBinaryResult> {
   const { fetchImpl = fetch, headers, ...requestOptions } = options;
-  const response = await fetchImpl(url, {
+  const response = await fetchWithRateLimitRetry(url, fetchImpl, {
     ...requestOptions,
     headers: createLinovelImageHeaders(headers),
   });
@@ -79,6 +83,108 @@ export async function fetchLinovelBinary(
     content: Buffer.from(await response.arrayBuffer()),
     mediaType,
   };
+}
+
+interface RateLimitRetryOptions extends RequestInit {
+  rateLimitDefaultMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+async function fetchWithRateLimitRetry(
+  url: string,
+  fetchImpl: typeof fetch,
+  options: RateLimitRetryOptions,
+): Promise<Response> {
+  const {
+    rateLimitDefaultMs = DEFAULT_RATE_LIMIT_WAIT_MS,
+    now = Date.now,
+    sleep = defaultSleep,
+    ...requestOptions
+  } = options;
+
+  const response = await fetchImpl(url, requestOptions);
+  if (response.status !== 429) {
+    return response;
+  }
+
+  const waitMs = getRateLimitWaitMs(
+    response.headers,
+    now(),
+    rateLimitDefaultMs,
+  );
+  console.debug(`Rate limited with 429 from ${url}; retrying in ${waitMs}ms`);
+  await response.body?.cancel();
+  await sleep(waitMs);
+
+  return fetchWithRateLimitRetry(url, fetchImpl, options);
+}
+
+function getRateLimitWaitMs(
+  headers: Headers,
+  nowMs: number,
+  defaultMs: number,
+): number {
+  const retryAfter = headers.get("retry-after");
+  const retryAfterMs = parseRetryAfter(retryAfter, nowMs);
+  if (retryAfterMs !== undefined) {
+    console.debug(
+      `Rate limit retry-after header: ${retryAfter} => ${retryAfterMs}ms`,
+    );
+    return retryAfterMs;
+  }
+
+  for (const name of ["ratelimit-reset", "x-ratelimit-reset"]) {
+    const resetMs = parseRateLimitReset(headers.get(name), nowMs);
+    if (resetMs !== undefined) {
+      console.debug(
+        `Rate limit ${name} header: ${headers.get(name)} => ${resetMs}ms`,
+      );
+      return resetMs;
+    }
+  }
+
+  return Math.max(0, defaultMs);
+}
+
+function parseRetryAfter(
+  value: string | null,
+  nowMs: number,
+): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const dateMs = Date.parse(value);
+  return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - nowMs);
+}
+
+function parseRateLimitReset(
+  value: string | null,
+  nowMs: number,
+): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const number = Number(value);
+  if (Number.isFinite(number) && number >= 0) {
+    const resetAtMs =
+      number >= 1_000_000_000_000
+        ? number
+        : number >= 1_000_000_000
+          ? number * 1000
+          : nowMs + number * 1000;
+    return Math.max(0, resetAtMs - nowMs);
+  }
+
+  const dateMs = Date.parse(value);
+  return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - nowMs);
 }
 
 export interface ThrottledFetchHtmlOptions {

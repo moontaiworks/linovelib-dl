@@ -20,6 +20,7 @@ import {
   parseChapterPage,
   shouldContinueChapter,
   walkPagesFrom,
+  fetchLinovelHtml,
 } from "../dist/index.js";
 import { formatEpubFileName } from "../dist/cli.js";
 
@@ -220,6 +221,58 @@ test("createThrottledFetchHtml waits between sequential requests", async () => {
     { url: "second", at: 1250 },
     { url: "third", at: 1550 },
   ]);
+});
+
+test("fetchLinovelHtml waits for the rate limit reset before retrying", async () => {
+  const calls = [];
+  const waits = [];
+  let now = 1_700_000_000_000;
+  const fetchImpl = async (url) => {
+    calls.push(url);
+    return calls.length === 1
+      ? new Response("", {
+          status: 429,
+          headers: { "x-ratelimit-reset": "1700000005" },
+        })
+      : new Response("ok");
+  };
+
+  assert.equal(
+    await fetchLinovelHtml("https://example.test/page", {
+      fetchImpl,
+      now: () => now,
+      sleep: async (ms) => {
+        waits.push(ms);
+        now += ms;
+      },
+    }),
+    "ok",
+  );
+  assert.deepEqual(calls, [
+    "https://example.test/page",
+    "https://example.test/page",
+  ]);
+  assert.deepEqual(waits, [5000]);
+});
+
+test("fetchLinovelHtml uses the default wait when 429 has no reset header", async () => {
+  let callCount = 0;
+  const waits = [];
+
+  assert.equal(
+    await fetchLinovelHtml("https://example.test/page", {
+      fetchImpl: async () => {
+        callCount += 1;
+        return callCount === 1
+          ? new Response("", { status: 429 })
+          : new Response("ok");
+      },
+      rateLimitDefaultMs: 1234,
+      sleep: async (ms) => waits.push(ms),
+    }),
+    "ok",
+  );
+  assert.deepEqual(waits, [1234]);
 });
 
 test("extractCatalogChapters reads chapter links in catalog order", async () => {
